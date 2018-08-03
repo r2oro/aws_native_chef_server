@@ -1,0 +1,115 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  IAM prerequisites for HC Chef installation
+
+Metadata: {}
+
+Parameters:
+  ChefSecretsBucket:
+    Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to
+    Type: String
+    Default: gehc-chef-secrets-stage
+
+Mappings: {}
+
+Conditions: {}
+
+Resources:
+  ElasticSearchSLR:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ServiceRoleForAmazonElasticsearchService
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Principal:
+            Service:
+            - es.amazonaws.com
+          Effect: Allow
+      ManagedPolicyArns:
+        - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce'] ]
+        - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce-the-sequel'] ]
+
+  ElasticSearchSLRPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: PolicyForAmazonElasticsearchService
+      Roles:
+        - !Ref ElasticSearchSLR
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Action:
+            - ec2:CreateNetworkInterface
+            - ec2:DeleteNetworkInterface
+            - ec2:DescribeNetworkInterfaces
+            - ec2:ModifyNetworkInterfaceAttribute
+            - ec2:DescribeSecurityGroups
+            - ec2:DescribeSubnets
+            - ec2:DescribeVpcs
+          Resource: '*'
+          Effect: Allow
+
+  ChefRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Effect: Allow
+      ManagedPolicyArns:
+        - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce'] ]
+        - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce-the-sequel'] ]
+
+  ChefRolePolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ChefServer-Policy
+      Roles:
+      - !Ref ChefRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        # Allow all actions to one bucket (the supplied one, or the one you provided)
+        - Action: s3:*
+          Effect: Allow
+          Resource:
+            - !Join [ '', ['arn:aws:s3:::', !Ref ChefSecretsBucket] ]
+            - !Join [ '', ['arn:aws:s3:::', !Ref ChefSecretsBucket, '/*'] ]
+        # Allow ability to list all buckets
+        - Action: s3:List*
+          Effect: Allow
+          Resource: arn:aws:s3:::*
+        # Allow instances to set themselves as unhealthy if one of the scripts fail
+        - Action: autoscaling:*
+          Effect: Allow
+          Resource: "*"
+        # Allow instances to read their own tags (needed for setup script below)
+        - Action: ec2:DescribeTags
+          Effect: Allow
+          Resource: "*"
+        - Action: cloudwatch:PutMetricData
+          Effect: Allow
+          Resource: "*"
+        - Action: cloudwatch:GetMetricStatistics
+          Effect: Allow
+          Resource: "*"
+        - Action: cloudwatch:ListMetrics
+          Effect: Allow
+          Resource: "*"
+        # Allow instances to write to cloudwatch logs
+        - Action: ["logs:PutLogEvents", "logs:CreateLogStream", "logs:CreateLogGroup"]
+          Effect: Allow
+          Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${AWS::StackName}*
+
+Outputs: {}

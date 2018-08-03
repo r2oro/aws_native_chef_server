@@ -1,0 +1,29 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Infrastructure prerequisites for Chef installation
+
+Metadata: {}
+
+Parameters:
+  ChefSecretsBucket:
+    Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to
+    Type: String
+    Default: gehc-chef-secrets-stage
+
+Mappings: {}
+
+Conditions: {}
+
+Resources:
+  ChefBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Ref ChefSecretsBucket
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+
+Outputs: {}
