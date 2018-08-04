@@ -1,0 +1,66 @@
+[
+  {
+    "ParameterKey":   "ElasticSearchVersion",
+    "ParameterValue": "5.5"
+  },
+  {
+    "ParameterKey":   "SSLCertificateARN",
+    "ParameterValue": "arn:aws:iam::164996153968:server-certificate/star.cloud.gehealthcare.com"
+  },
+  {
+    "ParameterKey":   "LicenseCount",
+    "ParameterValue": "100"
+  },
+  {
+    "ParameterKey":   "DBPassword",
+    "ParameterValue": "SuperSecurePassword"
+  },
+  {
+    "ParameterKey":   "KeyName",
+    "ParameterValue": "artur-aws"
+  },
+  {
+    "ParameterKey":   "VPC",
+    "ParameterValue": "vpc-b8a560dd"
+  },
+  {
+    "ParameterKey":   "InboundAdminSecurityGroupId",
+    "ParameterValue": "sg-dad45ebe"
+  },
+  {
+    "ParameterKey":   "LoadBalancerScheme",
+    "ParameterValue": "internal"
+  },
+  {
+    "ParameterKey":   "ChefServerSubnets",
+    "ParameterValue": "subnet-014c932a,subnet-c621b0b1"
+  },
+  {
+    "ParameterKey":   "ChefServerAssociatePublicIpAddress",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey":   "InstanceType",
+    "ParameterValue": "c5.xlarge"
+  },
+  {
+    "ParameterKey":   "DBInstanceClass",
+    "ParameterValue": "db.m4.xlarge"
+  },
+  {
+    "ParameterKey":   "ContactEmail",
+    "ParameterValue": "artur.pioro@ge.com"
+  },
+  {
+    "ParameterKey":   "ContactDept",
+    "ParameterValue": "GEHC Automation Team"
+  },
+  {
+    "ParameterKey":   "ChefSecretsBucket",
+    "ParameterValue": "gehc-chef-poc"
+  },
+  {
+    "ParameterKey":   "ChefServerIamRole",
+    "ParameterValue": "chef-server-poc-role"
+  }
+]

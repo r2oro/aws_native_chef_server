@@ -10,7 +10,7 @@ Parameters:
   ChefSecretsBucket:
     Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to
     Type: String
-    Default: gehc-chef-secrets-stage
+    Default: gehc-chef-poc
 
 Mappings: {}
 

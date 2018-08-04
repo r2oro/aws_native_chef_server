@@ -10,53 +10,18 @@ Parameters:
   ChefSecretsBucket:
     Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to
     Type: String
-    Default: gehc-chef-secrets-stage
+    Default: gehc-chef-poc
 
 Mappings: {}
 
 Conditions: {}
 
 Resources:
-  ElasticSearchSLR:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: ServiceRoleForAmazonElasticsearchService
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        - Action:
-          - sts:AssumeRole
-          Principal:
-            Service:
-            - es.amazonaws.com
-          Effect: Allow
-      ManagedPolicyArns:
-        - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce'] ]
-        - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce-the-sequel'] ]
-
-  ElasticSearchSLRPolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: PolicyForAmazonElasticsearchService
-      Roles:
-        - !Ref ElasticSearchSLR
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        - Action:
-            - ec2:CreateNetworkInterface
-            - ec2:DeleteNetworkInterface
-            - ec2:DescribeNetworkInterfaces
-            - ec2:ModifyNetworkInterfaceAttribute
-            - ec2:DescribeSecurityGroups
-            - ec2:DescribeSubnets
-            - ec2:DescribeVpcs
-          Resource: '*'
-          Effect: Allow
 
   ChefRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: chef-server-poc-role
       Path: /
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
