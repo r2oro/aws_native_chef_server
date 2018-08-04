@@ -40,7 +40,7 @@ _Here's an example of setting up an S3 cache:_
     # https://mybucket.s3.amazonaws.com/package-cache/chef-server-core-12.17.33-1.el7.x86_64.rpm
     ```
 1. Set the last output (e.g. `https://mybucket.s3.amazonaws.com/package-cache/chef-server-core-12.17.33-1.el7.x86_64.rpm` as shown above) as your `ChefServerPackage` value in `backendless_chef.yaml`.
-    
+
 
 ## Network
 
@@ -56,6 +56,6 @@ You must already have a VPC setup properly before continuing setting up the stac
 
 ## Amazon ElasticSearch and Service Linked Role (SLR)
 
-Amazon ElasticSearch requires a specific SLR to be created prior to running this CloudFormation template, specifically one called `AWSServiceRoleForAmazonElasticsearchService`. This role cannot be created programmatically as it is created automatically when setting up a VPC access domain in the AWS console. For more information on this [please see this doc from AWS](https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/slr-es.html), at this time, even though the doc points to a way to create this manually via the CLI, it still only works via console setup, however AWS adds new features all the time, and by the time you do this, it may work programmatically, please follow their documentation. Once you've created the VPC access domain for AWS ElasticSearch, you can then delete this domain, the role will still be there and you should be able to continue.
+Amazon ElasticSearch requires a specific SLR to be created prior to running this CloudFormation template, specifically one called `AWSServiceRoleForAmazonElasticsearchService`. This role can be created programmatically with AWS CLI with commandline `aws iam create-service-linked-role --aws-service-name "es.amazonaws.com"`. For more information on this [please see this doc from AWS](https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/slr-es.html). Once you've created the VPC access domain for AWS ElasticSearch, you can then delete this domain, the role will still be there and you should be able to continue.
 
 _Note: You will need to do this for each region you plan on setting up Chef in_
