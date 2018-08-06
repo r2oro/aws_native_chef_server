@@ -273,7 +273,7 @@ Mappings:
     eu-central-1:
       AMI: ami-a058674b
     us-east-1:
-      AMI: ami-cfe4b2b0
+      AMI: ami-7ddcc402
     us-east-2:
       AMI: ami-40142d25
     us-west-1:
