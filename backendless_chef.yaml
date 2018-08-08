@@ -273,7 +273,7 @@ Mappings:
     eu-central-1:
       AMI: ami-a058674b
     us-east-1:
-      AMI: ami-7ddcc402
+      AMI: ami-b0fbe0cf
     us-east-2:
       AMI: ami-40142d25
     us-west-1:
@@ -721,6 +721,17 @@ Resources:
                 stop on shutdown
                 respawn
                 exec /usr/local/bin/aws-signing-proxy
+            /etc/systemd/system/aws-signing-proxy.service:
+              content: !Sub |
+                [Unit]
+                Description=AWS_signing_service
+                After=network.target
+                [Service]
+                ExecStart=/usr/local/bin/aws-signing-proxy
+                Type=simple
+                PIDFile=/var/run/aws-signing-proxy.pid
+                [Install]
+                WantedBy=default.target
             /etc/aws-signing-proxy.yml:
               content: !Sub |
                 listen-address: 127.0.0.1
@@ -729,7 +740,9 @@ Resources:
                 region: ${AWS::Region}
           commands:
             01_start_es_proxy:
-              command: initctl start aws-signing-proxy
+              command: |
+                systemctl daemon-reload
+                systemctl start aws-signing-proxy.service
             02_before_script:
               command: !Sub |
                 if [ -n '${BeforeScriptLocation}' ]; then
