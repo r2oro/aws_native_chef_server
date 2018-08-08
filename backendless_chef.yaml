@@ -781,16 +781,16 @@ Resources:
                 crontab -l | { cat; echo "*/5 * * * * /opt/cloudwatch_monitoring/aws-scripts-mon/mon-put-instance-data.pl --auto-scaling --mem-util --disk-space-util --disk-path=/ --from-cron"; } | crontab -
         awslogs:
           files:
-            /etc/awslogs/awscli.conf:
-              content: !Sub |
-                [default]
-                region = ${AWS::Region}
-                [plugins]
-                cwlogs = cwlogs
-              mode: '000644'
-              owner: root
-              group: root
-            /etc/awslogs/awslogs.conf:
+            # /etc/awslogs/awscli.conf:
+            #   content: !Sub |
+            #     [default]
+            #     region = ${AWS::Region}
+            #     [plugins]
+            #     cwlogs = cwlogs
+            #   mode: '000644'
+            #   owner: root
+            #   group: root
+            /tmp/awslogs.conf:
               content: !Sub |
                 [general]
                 state_file = /var/lib/awslogs/agent-state
@@ -892,8 +892,9 @@ Resources:
               command: |
                 cd /tmp
                 curl https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O
-                python ./awslogs-agent-setup.py --region us-east-1 --non-interactive --configfile=/etc/awslogs/awslogs.conf
+                python ./awslogs-agent-setup.py --region us-east-1 --non-interactive --configfile=/tmp/awslogs.conf
                 rm ./awslogs-agent-setup.py
+                rm ./awslogs.conf
           services:
             sysvinit:
               awslogs:
