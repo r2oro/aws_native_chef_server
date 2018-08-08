@@ -106,6 +106,10 @@ Parameters:
     Description: The URL to the push jobs server package which will be downloaded
     Type: String
     Default: 'https://packages.chef.io/files/stable/opscode-push-jobs-server/2.2.8/el/7/opscode-push-jobs-server-2.2.8-1.el7.x86_64.rpm'
+  ReportingPackage:
+    Description: The URL to Chef Reporting package which will be downloaded
+    Type: String
+    Default: 'https://packages.chef.io/files/stable/opscode-reporting/1.8.0/el/7/opscode-reporting-1.8.0-1.el7.x86_64.rpm'
   BeforeScriptLocation:
     Description: The S3 location of the script which runs before the Main script (optional)
     Type: String
@@ -651,7 +655,7 @@ Resources:
               opscode-push-jobs-server: !Sub ${PushJobsPackage}
             yum:
               perl: []
-              perl-CPAN: []
+              perl-ExtUtils-MakeMaker: []
               perl-DateTime: []
               perl-Sys-Syslog: []
               perl-LWP-Protocol-https: []
@@ -659,75 +663,6 @@ Resources:
               zip: []
               unzip: []
           files:
-            /usr/share/perl5/CPAN/Config.pm:
-              content: |
-                $CPAN::Config = {
-                  'applypatch' => q[],
-                  'auto_commit' => q[0],
-                  'build_cache' => q[100],
-                  'build_dir' => q[/root/.cpan/build],
-                  'build_dir_reuse' => q[0],
-                  'build_requires_install_policy' => q[yes],
-                  'bzip2' => q[/usr/bin/bzip2],
-                  'cache_metadata' => q[1],
-                  'check_sigs' => q[0],
-                  'colorize_output' => q[0],
-                  'commandnumber_in_prompt' => q[1],
-                  'connect_to_internet_ok' => q[1],
-                  'cpan_home' => q[/root/.cpan],
-                  'curl' => q[/usr/bin/curl],
-                  'ftp_passive' => q[1],
-                  'ftp_proxy' => q[],
-                  'getcwd' => q[cwd],
-                  'gpg' => q[/usr/bin/gpg],
-                  'gzip' => q[/usr/bin/gzip],
-                  'halt_on_failure' => q[0],
-                  'histfile' => q[/root/.cpan/histfile],
-                  'histsize' => q[100],
-                  'http_proxy' => q[],
-                  'inactivity_timeout' => q[0],
-                  'index_expire' => q[1],
-                  'inhibit_startup_message' => q[0],
-                  'keep_source_where' => q[/root/.cpan/sources],
-                  'load_module_verbosity' => q[none],
-                  'make' => q[/usr/bin/make],
-                  'make_arg' => q[],
-                  'make_install_arg' => q[],
-                  'make_install_make_command' => q[/usr/bin/make],
-                  'makepl_arg' => q[],
-                  'mbuild_arg' => q[],
-                  'mbuild_install_arg' => q[],
-                  'mbuild_install_build_command' => q[./Build],
-                  'mbuildpl_arg' => q[],
-                  'no_proxy' => q[],
-                  'pager' => q[/usr/bin/less],
-                  'patch' => q[/usr/bin/patch],
-                  'perl5lib_verbosity' => q[none],
-                  'prefer_external_tar' => q[1],
-                  'prefer_installer' => q[MB],
-                  'prefs_dir' => q[/root/.cpan/prefs],
-                  'prerequisites_policy' => q[follow],
-                  'scan_cache' => q[atstart],
-                  'shell' => q[/bin/bash],
-                  'show_unparsable_versions' => q[0],
-                  'show_upload_date' => q[0],
-                  'show_zero_versions' => q[0],
-                  'tar' => q[/usr/bin/tar],
-                  'tar_verbosity' => q[none],
-                  'term_is_latin' => q[1],
-                  'term_ornaments' => q[1],
-                  'test_report' => q[0],
-                  'trust_test_report_history' => q[0],
-                  'unzip' => q[/usr/bin/unzip],
-                  'urllist' => [q[http://espejito.fder.edu.uy/cpan/], q[http://cpan.mmgdesigns.com.ar/], q[http://mirror.pop-sc.rnp.br/CPAN/]],
-                  'use_sqlite' => q[0],
-                  'version_timeout' => q[15],
-                  'wget' => q[],
-                  'yaml_load_code' => q[0],
-                  'yaml_module' => q[YAML],
-                };
-                1;
-                __END__
             /etc/opscode-push-jobs-server/opscode-push-jobs-server.rb:
               content: !Sub |
                 opscode_pushy_server['vip'] = '127.0.0.1'
@@ -808,6 +743,16 @@ Resources:
                 target: https://${ElasticsearchDomain.DomainEndpoint}
                 region: ${AWS::Region}
           commands:
+            00_install_perl_Switch:
+              command: !Sub |
+                cd /tmp
+                curl ${PerlSwitchPackage} | tar xf -
+                cd ./Switch-2.17
+                perl Makefile.PL PREFIX=/usr/
+                make
+                make install
+                cd /tmp
+                rm -rf ./Switch-2.17
             01_start_es_proxy:
               command: |
                 systemctl daemon-reload
@@ -823,10 +768,6 @@ Resources:
                     echo "# Appended from chef-server-custom.rb" >> /etc/opscode/chef-server.rb
                     cat /etc/opscode/chef-server-custom.rb >> /etc/opscode/chef-server.rb
                 fi
-            02_cpan_install_perl_Switch:
-              command: |
-                cpan App::cpanminus
-                cpanm Switch
             03_configure_chef_server:
               command: !Sub
               - |
@@ -854,15 +795,6 @@ Resources:
                 crontab -l | { cat; echo "*/5 * * * * /opt/cloudwatch_monitoring/aws-scripts-mon/mon-put-instance-data.pl --auto-scaling --mem-util --disk-space-util --disk-path=/ --from-cron"; } | crontab -
         awslogs:
           files:
-            # /etc/awslogs/awscli.conf:
-            #   content: !Sub |
-            #     [default]
-            #     region = ${AWS::Region}
-            #     [plugins]
-            #     cwlogs = cwlogs
-            #   mode: '000644'
-            #   owner: root
-            #   group: root
             /tmp/awslogs.conf:
               content: !Sub |
                 [general]
@@ -966,8 +898,7 @@ Resources:
                 cd /tmp
                 curl https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O
                 python ./awslogs-agent-setup.py --region us-east-1 --non-interactive --configfile=/tmp/awslogs.conf
-                rm ./awslogs-agent-setup.py
-                rm ./awslogs.conf
+                rm awslogs-agent-setup.py awslogs.conf
           services:
             sysvinit:
               awslogs:
