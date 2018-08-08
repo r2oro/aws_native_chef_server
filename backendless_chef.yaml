@@ -780,9 +780,6 @@ Resources:
                 rm CloudWatchMonitoringScripts-1.2.1.zip
                 crontab -l | { cat; echo "*/5 * * * * /opt/cloudwatch_monitoring/aws-scripts-mon/mon-put-instance-data.pl --auto-scaling --mem-util --disk-space-util --disk-path=/ --from-cron"; } | crontab -
         awslogs:
-          packages:
-            yum:
-              awslogs: []
           files:
             /etc/awslogs/awscli.conf:
               content: !Sub |
@@ -890,14 +887,18 @@ Resources:
               mode: '000644'
               owner: root
               group: root
+          commands:
+            01_install:
+              command: |
+                cd /tmp
+                curl https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O
+                python ./awslogs-agent-setup.py --region us-east-1 --non-interactive --configfile=/etc/awslogs/awslogs.conf
+                rm ./awslogs-agent-setup.py
           services:
             sysvinit:
               awslogs:
                 enabled: true
                 ensureRunning: true
-                packages:
-                  yum:
-                  - awslogs
                 files:
                 - /etc/awslogs/awslogs.conf
                 - /etc/awslogs/awscli.conf
