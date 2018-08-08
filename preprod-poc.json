@@ -5,7 +5,7 @@
   },
   {
     "ParameterKey":   "SSLCertificateARN",
-    "ParameterValue": "arn:aws:iam::164996153968:server-certificate/star.cloud.gehealthcare.com"
+    "ParameterValue": "arn:aws:iam::164996153968:server-certificate/star.cloud.gehealthcare.com_v2"
   },
   {
     "ParameterKey":   "LicenseCount",
