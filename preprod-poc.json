@@ -64,6 +64,22 @@
     "ParameterValue": "chef-server-poc-role"
   },
   {
+    "ParameterKey":   "ChefServerPackage",
+    "ParameterValue": "https://gehc-chef-poc.s3.amazonaws.com/package-cache/chef-server-core-12.17.33-1.el7.x86_64.rpm"
+  },
+  {
+    "ParameterKey":   "ChefManagePackage",
+    "ParameterValue": "https://gehc-chef-poc.s3.amazonaws.com/package-cache/chef-manage-2.5.16-1.el7.x86_64.rpm"
+  },
+  {
+    "ParameterKey":   "PushJobsPackage",
+    "ParameterValue": "https://gehc-chef-poc.s3.amazonaws.com/package-cache/opscode-push-jobs-server-2.2.8-1.el7.x86_64.rpm"
+  },
+  {
+    "ParameterKey":   "ReportingPackage",
+    "ParameterValue": "https://gehc-chef-poc.s3.amazonaws.com/package-cache/opscode-reporting-1.8.0-1.el7.x86_64.rpm"
+  },
+  {
     "ParameterKey": "PerlSwitchPackage",
     "ParameterValue": "https://gehc-chef-poc.s3.amazonaws.com/package-cache/Switch-2.17.tar.gz"
   }
