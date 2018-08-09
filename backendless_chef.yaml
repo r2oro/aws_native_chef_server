@@ -110,6 +110,18 @@ Parameters:
     Description: The URL to Chef Reporting package which will be downloaded
     Type: String
     Default: 'https://packages.chef.io/files/stable/opscode-reporting/1.8.0/el/7/opscode-reporting-1.8.0-1.el7.x86_64.rpm'
+  FilebeatPackage:
+    Description: Filebeat rpm URL
+    Type: String
+    Default: 'https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-5.6.6-x86_64.rpm'
+  PerlSwitchPackage:
+    Description: Tarball with Perl 'Switch' module
+    Type: String
+    Default: 'https://cpan.metacpan.org/authors/id/C/CH/CHORNY/Switch-2.17.tar.gz'
+  SigningProxy:
+    Description: SigningProxy binary location
+    Type: String
+    Default: 'https://github.com/chef-customers/aws-signing-proxy/releases/download/v0.3.0/aws-signing-proxy'
   BeforeScriptLocation:
     Description: The S3 location of the script which runs before the Main script (optional)
     Type: String
@@ -223,6 +235,10 @@ Metadata:
           - ChefServerPackage
           - ChefManagePackage
           - PushJobsPackage
+          - ReportingPackage
+          - FilebeatPackage
+          - PerlSwitchPackage
+          - SigningProxy
           - BeforeScriptLocation
           - AfterScriptLocation
       - Label:
@@ -717,7 +733,7 @@ Resources:
                   data_collector['token'] = '${ChefAutomateToken}'
                 end
             /usr/local/bin/aws-signing-proxy:
-              source: https://github.com/chef-customers/aws-signing-proxy/releases/download/v0.3.0/aws-signing-proxy
+              source: !Sub ${SigningProxy}
               mode: '000755'
             /etc/init/aws-signing-proxy.conf:
               content: !Sub |
@@ -746,7 +762,7 @@ Resources:
             00_install_perl_Switch:
               command: !Sub |
                 cd /tmp
-                curl ${PerlSwitchPackage} | tar xf -
+                curl ${PerlSwitchPackage} | tar zxf -
                 cd ./Switch-2.17
                 perl Makefile.PL PREFIX=/usr/
                 make
@@ -789,7 +805,7 @@ Resources:
               command: !Sub |
                 mkdir /opt/cloudwatch_monitoring
                 cd /opt/cloudwatch_monitoring
-                curl http://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip -O
+                curl https://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip -O
                 unzip CloudWatchMonitoringScripts-1.2.1.zip
                 rm CloudWatchMonitoringScripts-1.2.1.zip
                 crontab -l | { cat; echo "*/5 * * * * /opt/cloudwatch_monitoring/aws-scripts-mon/mon-put-instance-data.pl --auto-scaling --mem-util --disk-space-util --disk-path=/ --from-cron"; } | crontab -
@@ -910,7 +926,7 @@ Resources:
         filebeat:
           packages:
             rpm:
-              filebeat: https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-5.6.6-x86_64.rpm
+              filebeat: !Sub ${FilebeatPackage}
           files:
             /etc/filebeat/filebeat.yml:
               content: !Sub |
