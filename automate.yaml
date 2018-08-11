@@ -58,6 +58,7 @@ Parameters:
   AutomateDataCollectorToken:
     Description: The token used for ingesting Data Collector (Chef) events
     Type: String
+    NoEcho: True
     Default: 93a49a4f2482c64126f7b6015e6b0f30284287ee4054ff8807fb63d9cbd1c506
   LoadBalancerScheme:
     Description: Network Scheme for the ELB
@@ -78,8 +79,16 @@ Parameters:
     Description: Supply an IAM Role for the Automate Server (leave blank to have it created for you). NOTE If you supply your own role, you must also provide an S3 Bucket which that role can access
     Type: String
     Default: ''
+  AutomateProfileName:
+    Description: Supply Instance Profile Name for Automate Server (leave blank to have it created for you). NOTE This name should reference AutomateIamRoleName above
+    Type: String
+    Default: ''
   ###############################################################################
   # Other Settings
+  ExternalAutomateDNS:
+    Type: String
+    Default: ''
+    Description: Externally defined DNS for automate
   Route53HostedZone:
     Type: String
     Default: ''
@@ -130,15 +139,21 @@ Metadata:
 Conditions:
   CreateAutomateIamRole:
     !Equals [ !Ref AutomateIamRole, '' ]
+  CreateAutomateProfile:
+    !Equals [ !Ref AutomateProfileName, '' ]
   CreateLoadBalancerSecurityGroup:
     !Equals [ !Ref LoadBalancerSecurityGroupId, '' ]
   CreateFrontendSecurityGroup:
     !Equals [ !Ref FrontendSecurityGroupId, '' ]
-  CreateRoute53Record:
-    !Not [!Equals [ !Ref Route53HostedZone, '' ] ]
+  UseExternalDNS:
+    !Not [!Equals [ !Ref ExternalAutomateDNS, '' ] ]
+  CreateRoute53Record: !And
+    - !Equals [ !Ref ExternalAutomateDNS, '' ]
+    - !Not [!Equals [ !Ref Route53HostedZone, '' ] ]
 
 Resources:
   ChefInstanceProfile:
+    Condition: CreateAutomateProfile
     Type: AWS::IAM::InstanceProfile
     Properties:
       Path: /
@@ -307,7 +322,7 @@ Resources:
           VolumeSize: !Ref DataVolumeSize
           VolumeType: st1
           DeleteOnTermination: false
-      IamInstanceProfile: !Ref ChefInstanceProfile
+      IamInstanceProfile: !If [CreateAutomateProfile, !Ref ChefInstanceProfile, !Ref AutomateProfileName]
       ImageId: !Ref AMIfromSSM
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
@@ -443,10 +458,10 @@ Resources:
                     # The Chef Software provided license token required to run Chef Automate.
                     # This can also be set with the "chef-automate license apply" command.
                     license = ""
-                # 
+                #
                 [auth_n.v1.sys.service]
                   a1_data_collector_token = "${AutomateDataCollectorToken}"
-              - { FQDN: !If [CreateRoute53Record, !Ref AutomateDNSRecord, !GetAtt ChefALB.DNSName] }
+              - { FQDN: !If [UseExternalDNS, !Ref ExternalAutomateDNS, !If [CreateRoute53Record, !Ref AutomateDNSRecord, !GetAtt ChefALB.DNSName]] }
             /etc/sysctl.d/00-chef.conf:
               content: !Sub |
                 vm.swappiness=10
