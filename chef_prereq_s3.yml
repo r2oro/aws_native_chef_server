@@ -1,0 +1,33 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Infrastructure prerequisites for Chef installation
+
+Metadata: {}
+
+Parameters:
+  ChefName:
+    Description: Supply name for whole Chef infrastructure
+    Type: String
+  ChefSecretsBucket:
+    Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to
+    Type: String
+
+Mappings: {}
+
+Conditions:
+  ChefSecretsBucketNamed:
+    !Not [!Equals [!Ref ChefSecretsBucket, '']]
+
+Resources:
+  ChefBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !If [ChefSecretsBucketNamed, !Ref ChefSecretsBucket, !Ref ChefName]
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+
+Outputs: {}
