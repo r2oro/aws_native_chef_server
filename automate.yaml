@@ -499,7 +499,7 @@ Resources:
                 curl http://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip -O
                 unzip CloudWatchMonitoringScripts-1.2.1.zip
                 rm CloudWatchMonitoringScripts-1.2.1.zip
-                crontab -l | { cat; echo "*/5 * * * * /opt/cloudwatch_monitoring/aws-scripts-mon/mon-put-instance-data.pl --auto-scaling --mem-util --disk-space-util --disk-path=/ --from-cron"; } | crontab -
+                crontab -l | { cat; echo "*/5 * * * * /opt/cloudwatch_monitoring/aws-scripts-mon/mon-put-instance-data.pl --mem-util --disk-space-util --disk-path=/ --disk-path=/hab --from-cron"; } | crontab -
         nightly_snapshots:
           files:
             /usr/local/bin/ebs-snapshot.sh:
@@ -696,10 +696,10 @@ Resources:
       - Name: InstanceId
         Value: !Ref AutomateServer
 
-  DiskSpaceUtilization:
+  DiskSpaceUtilizationHab:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub DiskSpaceUtilization-${AWS::StackName}
+      AlarmName: !Sub DiskSpaceUtilization-hab-${AWS::StackName}
       AlarmDescription: Alarms when an disk utilization reaches a specified threshold.
       AlarmActions: [!Ref AlertNotificationTopic]
       MetricName: DiskSpaceUtilization
@@ -713,11 +713,15 @@ Resources:
       Dimensions:
       - Name: InstanceId
         Value: !Ref AutomateServer
+      - Name: MountPath
+        Value: /hab
+      - Name: Filesystem
+        Value: /dev/mapper/data--vg-data--lv
 
-  DiskSpaceUtilizationNvme:
+  DiskSpaceUtilizationRoot:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub DiskSpaceUtilizationNvme-${AWS::StackName}
+      AlarmName: !Sub DiskSpaceUtilization-root-${AWS::StackName}
       AlarmDescription: Alarms when an disk utilization reaches a specified threshold.
       AlarmActions: [!Ref AlertNotificationTopic]
       MetricName: DiskSpaceUtilization
@@ -731,6 +735,10 @@ Resources:
       Dimensions:
       - Name: InstanceId
         Value: !Ref AutomateServer
+      - Name: MountPath
+        Value: /
+      - Name: Filesystem
+        Value: /dev/nvme0n1p1
 
   MemoryUtilization:
     Type: AWS::CloudWatch::Alarm
