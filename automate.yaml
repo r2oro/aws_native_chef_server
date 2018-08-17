@@ -59,7 +59,6 @@ Parameters:
     Description: The token used for ingesting Data Collector (Chef) events
     Type: String
     NoEcho: True
-    Default: 93a49a4f2482c64126f7b6015e6b0f30284287ee4054ff8807fb63d9cbd1c506
   LoadBalancerScheme:
     Description: Network Scheme for the ELB
     Type: String
