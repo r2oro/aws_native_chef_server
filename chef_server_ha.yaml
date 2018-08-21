@@ -724,8 +724,11 @@ Resources:
                 default_orgname '${ChefDefaultOrgName}'.empty? ? null : '${ChefDefaultOrgName}'
                 # special handling for Chef Automate URL and Token which might be empty strings
                 unless '${ChefAutomateServerUrl}'.empty? || '${ChefAutomateToken}'.empty?
-                  data_collector['root_url'] = '${ChefAutomateServerUrl}'
-                  data_collector['token'] = '${ChefAutomateToken}'
+                  data_collector['root_url'] = '${ChefAutomateServerUrl}data-collector/v0/'
+                  # Add for chef client run forwarding
+                  data_collector['proxy']= true
+                  # Add for compliance scanning
+                  profiles['root_url'] = '${ChefAutomateServerUrl}'
                 end
           commands:
             02_before_script:
@@ -746,9 +749,16 @@ Resources:
                 export BUCKET=${S3BUCKET}
                 export AWS_REGION=${AWS::Region}
                 export WAITHANDLE="${WaitHandle}"
+                TOKEN="${ChefAutomateToken}"
                 # don't sign the request as a workaround to download object from a third party public bucket
                 aws s3 cp --no-sign-request s3://${AutomationBucket}/files/main.sh /root/main.sh
                 bash -x /root/main.sh
+                if [ -n "$TOKEN" ]; then
+                  chef-server-ctl set-secret data_collector token "$TOKEN"
+                  chef-server-ctl restart nginx
+                  chef-server-ctl restart opscode-erchef
+                  chef-server-ctl reconfigure
+                fi
               - { S3BUCKET: !If [CreateChefSecretsBucket, !Ref ChefBucket, !Ref ChefSecretsBucket] }
             04_after_script:
               command: !Sub |
