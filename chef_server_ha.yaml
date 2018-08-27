@@ -110,6 +110,10 @@ Parameters:
     Description: The URL to the push jobs server package which will be downloaded
     Type: String
     Default: 'https://packages.chef.io/files/stable/opscode-push-jobs-server/2.2.8/el/7/opscode-push-jobs-server-2.2.8-1.el7.x86_64.rpm'
+  ReportingPackage:
+    Description: The URL to the reporting package which will be downloaded
+    Type: String
+    Default: 'https://packages.chef.io/files/stable/opscode-reporting/1.8.0/el/7/opscode-reporting-1.8.0-1.el7.x86_64.rpm'
   BeforeScriptLocation:
     Description: The S3 location of the script which runs before the Main script (optional)
     Type: String
@@ -235,6 +239,7 @@ Metadata:
           - ChefServerPackage
           - ChefManagePackage
           - PushJobsPackage
+          - ReportingPackage
           - BeforeScriptLocation
           - AfterScriptLocation
       - Label:
@@ -660,6 +665,7 @@ Resources:
               chef-server-core: !Sub ${ChefServerPackage}
               chef-manage: !Sub ${ChefManagePackage}
               opscode-push-jobs-server: !Sub ${PushJobsPackage}
+              opscode-reporting: !Sub ${ReportingPackage}
             yum:
               perl: []
               perl-Switch: []
@@ -759,6 +765,7 @@ Resources:
                   chef-server-ctl restart opscode-erchef
                   chef-server-ctl reconfigure
                 fi
+                opscode-reporting-ctl reconfigure --accept-license 
               - { S3BUCKET: !If [CreateChefSecretsBucket, !Ref ChefBucket, !Ref ChefSecretsBucket] }
             04_after_script:
               command: !Sub |
