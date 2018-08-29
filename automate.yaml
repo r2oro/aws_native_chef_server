@@ -49,6 +49,10 @@ Parameters:
   #   Description: The S3 location of the script which runs before the Main script (optional)
   #   Type: String
   #   Default: ''
+  PerlSwitchPackage:
+    Description: Tarball with Perl 'Switch' module
+    Type: String
+    Default: 'https://cpan.metacpan.org/authors/id/C/CH/CHORNY/Switch-2.17.tar.gz'
   # AfterScriptLocation:
   #   Description: The S3 location of the script which runs after the Main script (optional)
   #   Type: String
@@ -101,10 +105,9 @@ Parameters:
     Type: Number
     Default: 90
     AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
-  AMIfromSSM:
-    Description: AMI ID retrieved from an SSM parameter
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  AMI:
+    Description: AMI ID for automation server
+    Type: String
 
 Metadata:
   cfn-lint:
@@ -117,6 +120,7 @@ Metadata:
           default: "Required Parameters"
         Parameters:
           - VPC
+          - AMI
           - LoadBalancerSubnets
           - SSLCertificateARN
           - InboundAdminSecurityGroupId
@@ -322,7 +326,7 @@ Resources:
           VolumeType: st1
           DeleteOnTermination: false
       IamInstanceProfile: !If [CreateAutomateProfile, !Ref ChefInstanceProfile, !Ref AutomateProfileName]
-      ImageId: !Ref AMIfromSSM
+      ImageId: !Ref AMI
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
       Monitoring: true
@@ -357,8 +361,9 @@ Resources:
         automate_setup:
           packages:
             yum:
+              lvm2: []
               perl: []
-              perl-Switch: []
+              perl-ExtUtils-MakeMaker: []
               perl-DateTime: []
               perl-Sys-Syslog: []
               perl-LWP-Protocol-https: []
@@ -475,12 +480,22 @@ Resources:
                 *   soft  nofile    1048576
                 *   hard  nofile    1048576
           commands:
+            01_install_perl_Switch:
+              command: !Sub |
+                cd /tmp
+                curl ${PerlSwitchPackage} | tar zxf -
+                cd ./Switch-2.17
+                perl Makefile.PL PREFIX=/usr/
+                make
+                make install
+                cd /tmp
+                rm -rf ./Switch-2.17
             02_before_script:
               command: !Sub |
                 sysctl -p /etc/sysctl.d/00-chef.conf
                 mkdir -p /hab
-                pvs | grep xvdb || pvcreate /dev/xvdb
-                vgs | grep data-vg || vgcreate data-vg /dev/xvdb
+                pvs | grep nvme2n1 || pvcreate /dev/nvme2n1
+                vgs | grep data-vg || vgcreate data-vg /dev/nvme2n1
                 lvs | grep data-lv || (lvcreate -n data-lv -l 80%VG data-vg ; mkfs.xfs /dev/data-vg/data-lv)
                 grep hab /proc/mounts || mount /dev/data-vg/data-lv /hab
             03_configure_automate:
@@ -509,20 +524,8 @@ Resources:
               command: !Sub |
                 crontab -l | { cat; echo "55 23 * * * root /usr/local/bin/ebs-snapshot.sh"; } | crontab -
         awslogs:
-          packages:
-            yum:
-              awslogs: []
           files:
-            /etc/awslogs/awscli.conf:
-              content: !Sub |
-                [default]
-                region = ${AWS::Region}
-                [plugins]
-                cwlogs = cwlogs
-              mode: '000644'
-              owner: root
-              group: root
-            /etc/awslogs/awslogs.conf:
+            /tmp/awslogs.conf:
               content: !Sub |
                 [general]
                 state_file = /var/lib/awslogs/agent-state
@@ -568,8 +571,14 @@ Resources:
               owner: root
               group: root
           commands:
-            01_systemd:
-              command: systemctl daemon-reload && systemctl start awslogsd.service
+            01_install:
+              command: |
+                cd /tmp
+                curl https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O
+                python ./awslogs-agent-setup.py --region us-east-1 --non-interactive --configfile=/tmp/awslogs.conf
+                rm awslogs-agent-setup.py awslogs.conf
+            02_startup:
+              command: chkconfig --level 2345 awslogs on && service awslogs start
 
 # EC2 System AutoRecovery
 # https://aws.amazon.com/blogs/aws/new-auto-recovery-for-amazon-ec2/
