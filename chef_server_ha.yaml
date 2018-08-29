@@ -114,6 +114,18 @@ Parameters:
     Description: The URL to the reporting package which will be downloaded
     Type: String
     Default: 'https://packages.chef.io/files/stable/opscode-reporting/1.8.0/el/7/opscode-reporting-1.8.0-1.el7.x86_64.rpm'
+  FilebeatPackage:
+    Description: Filebeat rpm URL
+    Type: String
+    Default: 'https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-5.6.6-x86_64.rpm'
+  PerlSwitchPackage:
+    Description: Tarball with Perl 'Switch' module
+    Type: String
+    Default: 'https://cpan.metacpan.org/authors/id/C/CH/CHORNY/Switch-2.17.tar.gz'
+  SigningProxy:
+    Description: SigningProxy binary location
+    Type: String
+    Default: 'https://github.com/chef-customers/aws-signing-proxy/releases/download/v0.3.0/aws-signing-proxy'
   BeforeScriptLocation:
     Description: The S3 location of the script which runs before the Main script (optional)
     Type: String
@@ -240,6 +252,9 @@ Metadata:
           - ChefManagePackage
           - PushJobsPackage
           - ReportingPackage
+          - FilebeatPackage
+          - PerlSwitchPackage
+          - SigningProxy
           - BeforeScriptLocation
           - AfterScriptLocation
       - Label:
@@ -267,6 +282,39 @@ Conditions:
     !Equals [ !Ref FrontendSecurityGroupId, '' ]
   CreateRoute53Record:
     !Not [!Equals [ !Ref Route53HostedZone, '' ] ]
+
+Mappings:
+  AWSRegion2AMI:
+    ap-south-1:
+      AMI: ami-5a8da735
+    eu-west-3:
+      AMI: ami-d50bbaa8
+    eu-west-2:
+      AMI: ami-b2b55cd5
+    eu-west-1:
+      AMI: ami-e4515e0e
+    ap-northeast-2:
+      AMI: ami-ebc47185
+    ap-northeast-1:
+      AMI: ami-9c9443e3
+    sa-east-1:
+      AMI: ami-83d58fef
+    ca-central-1:
+      AMI: ami-03e86a67
+    ap-southeast-1:
+      AMI: ami-ed838091
+    ap-southeast-2:
+      AMI: ami-33f92051
+    eu-central-1:
+      AMI: ami-a058674b
+    us-east-1:
+      AMI: ami-b0fbe0cf
+    us-east-2:
+      AMI: ami-40142d25
+    us-west-1:
+      AMI: ami-0e86606d
+    us-west-2:
+      AMI: ami-0ad99772
 
 Resources:
 # Frontend Autoscale Groups
@@ -607,7 +655,10 @@ Resources:
           VolumeType: gp2
           DeleteOnTermination: true
       IamInstanceProfile: !If [CreateChefServerInstanceProfile, !Ref ChefInstanceProfile, !Ref ChefInstanceProfileName]
-      ImageId: !Ref AMIfromSSM
+      ImageId: !FindInMap
+        - AWSRegion2AMI
+        - !Ref AWS::Region
+        - AMI
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
       SecurityGroups:
@@ -634,7 +685,7 @@ Resources:
         es_proxy_setup:
           files:
             /usr/local/bin/aws-signing-proxy:
-              source: https://github.com/chef-customers/aws-signing-proxy/releases/download/v0.5.0/aws-signing-proxy
+              source: !Sub ${SigningProxy}
               mode: '000755'
             /etc/systemd/system/aws-signing-proxy.service:
               content: !Sub |
@@ -668,7 +719,7 @@ Resources:
               opscode-reporting: !Sub ${ReportingPackage}
             yum:
               perl: []
-              perl-Switch: []
+              perl-ExtUtils-MakeMaker: []
               perl-DateTime: []
               perl-Sys-Syslog: []
               perl-LWP-Protocol-https: []
@@ -737,6 +788,16 @@ Resources:
                   profiles['root_url'] = '${ChefAutomateServerUrl}'
                 end
           commands:
+            01_install_perl_Switch:
+              command: !Sub |
+                cd /tmp
+                curl ${PerlSwitchPackage} | tar zxf -
+                cd ./Switch-2.17
+                perl Makefile.PL PREFIX=/usr/
+                make
+                make install
+                cd /tmp
+                rm -rf ./Switch-2.17
             02_before_script:
               command: !Sub |
                 if [ -n '${BeforeScriptLocation}' ]; then
@@ -765,7 +826,7 @@ Resources:
                   chef-server-ctl restart opscode-erchef
                   chef-server-ctl reconfigure
                 fi
-                opscode-reporting-ctl reconfigure --accept-license 
+                opscode-reporting-ctl reconfigure --accept-license
               - { S3BUCKET: !If [CreateChefSecretsBucket, !Ref ChefBucket, !Ref ChefSecretsBucket] }
             04_after_script:
               command: !Sub |
@@ -777,25 +838,13 @@ Resources:
               command: !Sub |
                 mkdir /opt/cloudwatch_monitoring
                 cd /opt/cloudwatch_monitoring
-                curl http://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip -O
+                curl https://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip -O
                 unzip CloudWatchMonitoringScripts-1.2.1.zip
                 rm CloudWatchMonitoringScripts-1.2.1.zip
                 crontab -l | { cat; echo "*/5 * * * * /opt/cloudwatch_monitoring/aws-scripts-mon/mon-put-instance-data.pl --auto-scaling --mem-util --disk-space-util --disk-path=/ --from-cron"; } | crontab -
         awslogs:
-          packages:
-            yum:
-              awslogs: []
           files:
-            /etc/awslogs/awscli.conf:
-              content: !Sub |
-                [default]
-                region = ${AWS::Region}
-                [plugins]
-                cwlogs = cwlogs
-              mode: '000644'
-              owner: root
-              group: root
-            /etc/awslogs/awslogs.conf:
+            /tmp/awslogs.conf:
               content: !Sub |
                 [general]
                 state_file = /var/lib/awslogs/agent-state
@@ -893,12 +942,18 @@ Resources:
               owner: root
               group: root
           commands:
-            01_systemd:
-              command: systemctl daemon-reload && systemctl start awslogsd.service
+            01_install:
+              command: |
+                cd /tmp
+                curl https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O
+                python ./awslogs-agent-setup.py --region us-east-1 --non-interactive --configfile=/tmp/awslogs.conf
+                rm awslogs-agent-setup.py awslogs.conf
+            02_startup:
+              command: chkconfig --level 2345 awslogs on && service awslogs start
         filebeat:
           packages:
             rpm:
-              filebeat: https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-5.6.6-x86_64.rpm
+              filebeat: !Sub ${FilebeatPackage}
           files:
             /etc/filebeat/filebeat.yml:
               content: !Sub |
