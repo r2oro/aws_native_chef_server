@@ -560,10 +560,9 @@ Resources:
                 crontab -l | { cat; echo "55 23 * * * root /usr/local/bin/ebs-snapshot.sh"; } | crontab -
         awslogs:
           files:
-            /tmp/awslogs.conf:
+            /etc/awslogs/awslogs.conf:
               content: !Sub |
                 [general]
-                state_file = /var/lib/awslogs/agent-state
                 [/var/log/messages]
                 datetime_format = %b %d %H:%M:%S
                 file = /var/log/messages
@@ -594,10 +593,6 @@ Resources:
                 file = /var/log/cfn-init-cmd.log
                 log_stream_name = {instance_id}
                 log_group_name = ${VarLogCfnInitCmdLog}
-                [/var/log/cloud-init-output.log]
-                file = /var/log/cloud-init-output.log
-                log_stream_name = {instance_id}
-                log_group_name = ${VarLogCloudInitOutputLog}
                 [/var/log/dmesg]
                 file = /var/log/dmesg
                 log_stream_name = {instance_id}
@@ -610,8 +605,8 @@ Resources:
               command: |
                 cd /tmp
                 curl https://s3.amazonaws.com/aws-cloudwatch/downloads/latest/awslogs-agent-setup.py -O
-                python ./awslogs-agent-setup.py --region us-east-1 --non-interactive --configfile=/tmp/awslogs.conf
-                rm awslogs-agent-setup.py awslogs.conf
+                python ./awslogs-agent-setup.py --region us-east-1 --non-interactive --configfile=/etc/awslogs/awslogs.conf
+                rm awslogs-agent-setup.py
             02_startup:
               command: chkconfig --level 2345 awslogs on && service awslogs start
 
@@ -688,11 +683,6 @@ Resources:
       RetentionInDays: !Ref LogsRetentionInDays
 
   VarLogCloudInitLog:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      RetentionInDays: !Ref LogsRetentionInDays
-
-  VarLogCloudInitOutputLog:
     Type: AWS::Logs::LogGroup
     Properties:
       RetentionInDays: !Ref LogsRetentionInDays
@@ -781,7 +771,7 @@ Resources:
       - Name: MountPath
         Value: /
       - Name: Filesystem
-        Value: /dev/nvme0n1p1
+        Value: /dev/nvme0n1p2
 
   MemoryUtilization:
     Type: AWS::CloudWatch::Alarm
