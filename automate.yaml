@@ -45,14 +45,15 @@ Parameters:
     Default: 1000
   ###############################################################################
   # Package Versions & Locations
-  # BeforeScriptLocation:
-  #   Description: The S3 location of the script which runs before the Main script (optional)
-  #   Type: String
-  #   Default: ''
   PerlSwitchPackage:
     Description: Tarball with Perl 'Switch' module
     Type: String
     Default: 'https://cpan.metacpan.org/authors/id/C/CH/CHORNY/Switch-2.17.tar.gz'
+
+  # BeforeScriptLocation:
+  #   Description: The S3 location of the script which runs before the Main script (optional)
+  #   Type: String
+  #   Default: ''
   # AfterScriptLocation:
   #   Description: The S3 location of the script which runs after the Main script (optional)
   #   Type: String
@@ -108,6 +109,28 @@ Parameters:
   AMI:
     Description: AMI ID for automation server
     Type: String
+  ###############################################################################
+  # SAML settings (Taken into account if SamlURL is not blank)
+  SamlCert:
+    Type: String
+    Default: ''
+    Description: Supply SAML generated for the automate authentication
+  SamlURL:
+    Type: String
+    Default: ''
+    Description: Supply SAML URL for authentication
+  SamlUsernameAttr:
+    Type: String
+    Default: ''
+    Description: Supply SAML username query
+  SamlGroupsAttr:
+    Type: String
+    Default: ''
+    Description: Supply SAML group query
+  SamlEntityID:
+    Type: String
+    Default: ''
+    Description: Supply SAML ID od automation
 
 Metadata:
   cfn-lint:
@@ -373,6 +396,16 @@ Resources:
           files:
             /root/chef-automate.zip:
               source: https://packages.chef.io/files/current/automate/latest/chef-automate_linux_amd64.zip
+            /root/saml.toml:
+              content: !Sub |
+                [dex.v1.sys.connectors.saml]
+                  ca_contents = """${SamlCert}"""
+                  sso_url = "${SamlURL}"
+                  email_attr = "mail"
+                  username_attr = "${SamlUsernameAttr}"
+                  groups_attr = "${SamlGroupsAttr}"
+                  entity_issuer = "${SamlEntityID}"
+              mode: '000400'
             /etc/automate-config.toml:
               content: !Sub
               - |
@@ -490,7 +523,7 @@ Resources:
                 make install
                 cd /tmp
                 rm -rf ./Switch-2.17
-            02_before_script:
+            02_fs_setup:
               command: !Sub |
                 sysctl -p /etc/sysctl.d/00-chef.conf
                 mkdir -p /hab
@@ -503,9 +536,11 @@ Resources:
                 cd /root
                 unzip chef-automate.zip -d /usr/local/sbin
                 /usr/local/sbin/chef-automate deploy /etc/automate-config.toml --accept-terms-and-mlsa --skip-preflight
-            04_after_script:
+            04_configure_saml:
               command: !Sub |
-                true
+                if grep "sso_url.*https://" /root/saml.toml; then
+                  chef-automate config patch /root/saml.toml
+                fi
             05_configure_cloudwatch_monitoring:
               command: !Sub |
                 mkdir /opt/cloudwatch_monitoring
