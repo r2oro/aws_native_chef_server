@@ -177,6 +177,10 @@ Parameters:
     Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to (leave blank to have it created for you)
     Type: String
     Default: ''
+  LdapConfiguration:
+    Description: String with LDAP configuration to be injected into /etc/opscode/chef-server.rb
+    Type: String
+    Default: ''
   ###############################################################################
   # Other Settings
   ChefAutomateServerUrl:
@@ -208,10 +212,6 @@ Parameters:
     Type: Number
     Default: 90
     AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
-  AMIfromSSM:
-    Description: AMI ID retrieved from an SSM parameter
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
 
 Metadata:
   cfn-lint:
@@ -268,6 +268,7 @@ Metadata:
           - ChefServerIamRole
           - ChefInstanceProfileName
           - ChefSecretsBucket
+          - LdapConfiguration
 
 Conditions:
   CreateChefServerIamRole:
@@ -787,6 +788,7 @@ Resources:
                   # Add for compliance scanning
                   profiles['root_url'] = '${ChefAutomateServerUrl}'
                 end
+                ${LdapConfiguration}
           commands:
             01_install_perl_Switch:
               command: !Sub |
