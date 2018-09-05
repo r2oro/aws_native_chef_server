@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: AWS Native Automate (auto-recovering standalone) v4.0.0-alpha1
+Description: AWS Native Chef Automate (auto-recovering standalone)
 
 Parameters:
   # Required Parameters
@@ -49,6 +49,10 @@ Parameters:
     Description: Tarball with Perl 'Switch' module
     Type: String
     Default: 'https://cpan.metacpan.org/authors/id/C/CH/CHORNY/Switch-2.17.tar.gz'
+  EbsSnapshotScript:
+    Description: Location of EBS snaphoting script
+    Type: String
+    Default: 'https://raw.githubusercontent.com/CaseyLabs/aws-ec2-ebs-automatic-snapshot-bash/master/ebs-snapshot.sh'
 
   # BeforeScriptLocation:
   #   Description: The S3 location of the script which runs before the Main script (optional)
@@ -131,6 +135,10 @@ Parameters:
     Type: String
     Default: ''
     Description: Supply SAML ID od automation
+  SamlAdminGroup:
+    Type: String
+    Default: ''
+    Description: OneIDM DL for automate full access
 
 Metadata:
   cfn-lint:
@@ -376,7 +384,7 @@ Resources:
     CreationPolicy:
       ResourceSignal:
         Count: 1
-        Timeout: PT10M
+        Timeout: PT20M
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
@@ -541,6 +549,7 @@ Resources:
                 if grep "sso_url.*https://" /root/saml.toml; then
                   chef-automate config patch /root/saml.toml
                 fi
+                curl -k -s -H "api-token: $(chef-automate admin-token)" -H "Content-Type: application/json" -d '{"subjects":["${SamlAdminGroup}"], "action":"*", "resource":"*"}' https://localhost/api/v0/auth/policies
             05_configure_cloudwatch_monitoring:
               command: !Sub |
                 mkdir /opt/cloudwatch_monitoring
@@ -552,7 +561,7 @@ Resources:
         nightly_snapshots:
           files:
             /usr/local/bin/ebs-snapshot.sh:
-              source: https://raw.githubusercontent.com/CaseyLabs/aws-ec2-ebs-automatic-snapshot-bash/master/ebs-snapshot.sh
+              source: !Ref EbsSnapshotScript
               mode: '000755'
           commands:
             create_nightly_backup_cronjob:

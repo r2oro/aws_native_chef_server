@@ -11,7 +11,13 @@ Parameters:
     Description: Supply name for whole Chef infrastructure
     Type: String
   ChefSecretsBucket:
-    Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to
+    Description: Supply S3 Bucket name for the Chef Servers to read/write config files to
+    Type: String
+  ContactEmail:
+    Description: Contact email for Cloudwatch notifications and instance tagging
+    Type: String
+  ContactDept:
+    Description: Contact department for billing purposes
     Type: String
 
 Mappings: {}
@@ -29,5 +35,12 @@ Resources:
       AccessControl: Private
       VersioningConfiguration:
         Status: Enabled
+      Tags:
+      - Key: !Ref ChefName
+        Value: !Sub ${AWS::StackName}-bootstrap-frontend
+      - Key: X-Dept
+        Value: !Ref ContactDept
+      - Key: X-Contact
+        Value: !Ref ContactEmail
 
 Outputs: {}
