@@ -10,6 +10,12 @@ Parameters:
   ChefName:
     Description: Supply name for whole Chef infrastructure
     Type: String
+  ChefAutomateStack:
+    Description: Supply name for Chef automate stack (used for CloudWatch)
+    Type: String
+  ChefServerStack:
+    Description: Supply name for Chef server stack (used for CloudWatch)
+    Type: String
   ChefSecretsBucket:
     Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to
     Type: String
@@ -83,8 +89,8 @@ Resources:
         # Allow instances to write to cloudwatch logs
         - Action: ["logs:PutLogEvents", "logs:CreateLogStream", "logs:CreateLogGroup"]
           Effect: Allow
-          # Server instances have to be created in stack called ${ChefName}-server
-          Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ChefName}-server-*
+          # Server instances have to be created in stack called ${ChefServerStack}
+          Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ChefServerStack}-*
 
   ChefInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -143,8 +149,8 @@ Resources:
         # Allow instances to write to cloudwatch logs
         - Action: ["logs:PutLogEvents", "logs:CreateLogStream", "logs:CreateLogGroup"]
           Effect: Allow
-          # Automate instance has to be created in stack called ${ChefName}-automate
-          Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ChefName}-automate-*
+          # Automate instance has to be created in stack called ${ChefAutomateStack}-automate
+          Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ChefAutomateStack}-*
       Roles:
       - !Ref AutomateRole
 
