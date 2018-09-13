@@ -49,6 +49,10 @@ aws cloudformation create-stack \
 # Configure the chef_stack_parameters.json -
 #   retrieve the ChefAutomateServerUrl and ChefAutomateToken parameters from the Automate server
 # and launch the Chef Server HA stack
+
+Enable ElasticSearch service-linked role, if it not yet enabled:
+aws iam create-service-linked-role --aws-service-name "es.amazonaws.com"
+
 aws cloudformation validate-template --template-url https://s3.amazonaws.com/$MYBUCKET/chef_server_ha.yaml && \
 aws cloudformation create-stack \
   --stack-name ${MYID}-chef-servers \
