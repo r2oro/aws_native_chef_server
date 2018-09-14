@@ -432,6 +432,11 @@ Resources:
                     upgrade_strategy = "at-once"
                     deployment_type = "local"
 
+                # Set data retension
+                [ingest.v1.sys.service]
+                  purge_converge_history_after_days = ${LogsRetentionInDays}
+                  purge_actions_after_days = ${LogsRetentionInDays}
+
                 # Load Balancer service configuration.
                 [load_balancer]
                   [load_balancer.v1.sys]
