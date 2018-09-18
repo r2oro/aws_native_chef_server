@@ -682,7 +682,7 @@ Resources:
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
-          default: [awslogs, es_proxy_setup, chef_server_setup, filebeat]
+          default: [awslogs, es_proxy_setup, chef_server_setup, filebeat, chef_client_bootstrap]
         es_proxy_setup:
           files:
             /usr/local/bin/aws-signing-proxy:
@@ -973,7 +973,54 @@ Resources:
           commands:
             01_systemd:
               command: systemctl daemon-reload && systemctl start filebeat.service
+        chef_client_bootstrap:
+          files:
+            /etc/chef/bootstrap-chef_client.sh:
+              content: !Sub |
+                #!/bin/bash
 
+                if
+                  ! aws s3 ls ${ChefSecretsBucket}/chef-client
+                then
+                  echo No chef-client setup configuration
+                  exit 0
+                fi
+
+                if
+                  ! aws s3 sync s3://${ChefSecretsBucket}/chef-client/ /etc/chef/
+                then
+                  echo Cannot retrieve chef-client configuration
+                  exit -1
+                fi
+
+                chmod 0700 /etc/chef
+                if
+                  ! [ -r /etc/chef/setup.sh ]
+                then
+                  echo No chef-client setup.sh
+                  exit 0
+                fi
+
+                if
+                  /bin/bash /etc/chef/setup.sh
+                then
+                  crontab -l | grep -v /etc/chef/bootstrap-chef_client.sh | crontab
+                  rm /etc/chef/setup.sh /etc/chef/bootstrap-chef_client.sh
+                  echo chef-client successfuly bootstraped
+                  exit 0
+                fi
+
+                echo chef-client bootstrap failed
+                exit -1
+              mode: '000755'
+              owner: root
+              group: root
+          commands:
+            01_set_crontab_and_run:
+              command: |
+                RUN_AT=$(( ($(date +"%M") + 30) % 60 ))
+                { crontab -l; echo "$RUN_AT * * * * /etc/chef/bootstrap-chef_client.sh"; } | crontab
+                /etc/chef/bootstrap-chef_client.sh
   WaitCondition:
     Type: AWS::CloudFormation::WaitCondition
     DependsOn: ServerLaunchConfig
