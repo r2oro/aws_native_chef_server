@@ -129,6 +129,15 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
+        # Allow read actions on chef-client configuration
+        - Action: s3:GetObject
+          Effect: Allow
+          Resource:
+            - !Join [ '', ['arn:aws:s3:::', !If [ChefSecretsBucketNamed, !Ref ChefSecretsBucket, !Ref ChefName], '/chef-client/*'] ]
+        # Allow ability to list all buckets
+        - Action: s3:List*
+          Effect: Allow
+          Resource: arn:aws:s3:::*
         # Allow instance to create a nightly snapshot
         - Action: ["ec2:CreateSnapshot", "ec2:CreateTags", "ec2:DeleteSnapshot", "ec2:DescribeSnapshots", "ec2:DescribeVolumes"]
           Effect: Allow
