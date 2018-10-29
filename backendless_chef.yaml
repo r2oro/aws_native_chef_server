@@ -669,6 +669,7 @@ Resources:
               chef-server-core: !Sub ${ChefServerPackage}
               chef-manage: !Sub ${ChefManagePackage}
               opscode-push-jobs-server: !Sub ${PushJobsPackage}
+              opscode-reporting: !Sub ${ReportingPackage}
             yum:
               perl: []
               perl-ExtUtils-MakeMaker: []
