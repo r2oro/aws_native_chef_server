@@ -650,7 +650,7 @@ Resources:
       AssociatePublicIpAddress: !Ref ChefServerAssociatePublicIpAddress
       EbsOptimized: true
       BlockDeviceMappings:
-      - DeviceName: /dev/xvda
+      - DeviceName: /dev/sda1
         Ebs:
           VolumeSize: 20
           VolumeType: gp2
@@ -1326,7 +1326,7 @@ Resources:
                         "metrics": [
                             [ "System/Linux", "DiskSpaceUtilization", "MountPath", "/", "AutoScalingGroupName", "${BootstrapAutoScaleGroup}", "Filesystem", "/dev/xvda1", { "period": 60 } ],
                             [ "...", "${FrontendAutoScaleGroup}", ".", ".", { "period": 60 } ],
-                            [ "System/Linux", "DiskSpaceUtilization", "MountPath", "/", "AutoScalingGroupName", "${BootstrapAutoScaleGroup}", "Filesystem", "/dev/nvme0n1p1", { "period": 60 } ],
+                            [ "System/Linux", "DiskSpaceUtilization", "MountPath", "/", "AutoScalingGroupName", "${BootstrapAutoScaleGroup}", "Filesystem", "/dev/nvme0n1p2", { "period": 60 } ],
                             [ "...", "${FrontendAutoScaleGroup}", ".", ".", { "period": 60 } ]
                         ],
                         "region": "${AWS::Region}",
