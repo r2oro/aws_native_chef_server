@@ -1,0 +1,39 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Infrastructure (S3) prerequisites for Chef installation
+
+Metadata: {}
+
+Parameters:
+  ChefSecretsBucket:
+    Description: Supply S3 Bucket name for the Chef Servers to read/write config files to
+    Type: String
+  ContactEmail:
+    Description: Contact email
+    Type: String
+  ContactDept:
+    Description: Contact department
+    Type: String
+
+Mappings: {}
+
+Conditions: {}
+
+Resources:
+  ChefBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Ref ChefSecretsBucket
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+      - Key: X-Dept
+        Value: !Ref ContactDept
+      - Key: X-Contact
+        Value: !Ref ContactEmail
+
+Outputs: {}
