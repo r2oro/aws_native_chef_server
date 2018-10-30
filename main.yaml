@@ -248,51 +248,15 @@ Conditions:
 # Periodically regenerate this list using the 'generate_os_mappings.sh' script
 Mappings:
   AMI:
-    ap-south-1:
-      rhel: ami-0d49e4ede96fa736a
-      centos: None
-    eu-west-3:
-      rhel: ami-0477e9a4cc95712e2
-      centos: ami-0bbbe61cd746a7a40
-    eu-west-2:
-      rhel: ami-0411c57c35317c207
-      centos: ami-0f7061cd93c1719d9
     eu-west-1:
-      rhel: ami-0b55d6fb8cb847926
-      centos: ami-0b8ef990b4f6cc2f1
-    ap-northeast-2:
-      rhel: ami-063e3f34265b0856f
-      centos: None
-    ap-northeast-1:
-      rhel: ami-05555f985af973005
-      centos: None
-    sa-east-1:
-      rhel: ami-0f383a038e46ad864
-      centos: ami-003b10b29322f17ee
-    ca-central-1:
-      rhel: ami-032ce4648448d5809
-      centos: ami-0c45a1323d0bef4a3
-    ap-southeast-1:
-      rhel: ami-0af9271eb94137eca
-      centos: None
-    ap-southeast-2:
-      rhel: ami-068f4807abc434f1a
-      centos: None
+      rhel: ami-7aa39f03
+      centos: ami-87dbe7fe
     eu-central-1:
-      rhel: ami-0813c13822009a842
-      centos: ami-06eb7a21cab41309f
+      rhel: ami-20674fcb
+      centos: ami-1f7850f4
     us-east-1:
-      rhel: ami-05e13d377ab1838e4
-      centos: ami-0d9c743093b303d3d
-    us-east-2:
-      rhel: ami-006b2db4ca7e39d7d
-      centos: ami-0e3549bf81da3a5cc
-    us-west-1:
-      rhel: ami-063d5b1a32b3bb43f
-      centos: ami-0a29da21b480d9a6a
-    us-west-2:
-      rhel: ami-0301fe4c5f34e405b
-      centos: ami-0bdec459b8954e39b
+      rhel: ami-4acd5d35
+      centos: ami-dcc050a3
 
 Resources:
   ChefRole:
