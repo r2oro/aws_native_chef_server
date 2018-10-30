@@ -1,3 +1,7 @@
+#
+# Chef Server IAM setup
+#
+
 ---
 AWSTemplateFormatVersion: "2010-09-09"
 
@@ -10,32 +14,20 @@ Parameters:
   ChefName:
     Description: Supply name for whole Chef infrastructure
     Type: String
-  ChefAutomateStack:
-    Description: Supply name for Chef automate stack (used for CloudWatch)
-    Type: String
-  ChefServerStack:
-    Description: Supply name for Chef server stack (used for CloudWatch)
-    Type: String
   ChefSecretsBucket:
     Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to
     Type: String
 
 Mappings: {}
 
-Conditions:
-  ChefSecretsBucketNamed:
-    !Not [!Equals [!Ref ChefSecretsBucket, '']]
+Conditions: {}
 
 Resources:
-
-  #
-  # Chef Server IAM setup
-  #
 
   ChefRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub ${ChefName}-server-role
+      RoleName: !Sub ${ChefName}-role
       Path: /
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
@@ -50,7 +42,7 @@ Resources:
         - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce'] ]
         - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce-the-sequel'] ]
 
-  ChefRolePolicies:
+  RolePolicies:
     Type: AWS::IAM::Policy
     Properties:
       PolicyName: chef-policy
@@ -63,8 +55,8 @@ Resources:
         - Action: s3:*
           Effect: Allow
           Resource:
-            - !Join [ '', ['arn:aws:s3:::', !If [ChefSecretsBucketNamed, !Ref ChefSecretsBucket, !Ref ChefName]] ]
-            - !Join [ '', ['arn:aws:s3:::', !If [ChefSecretsBucketNamed, !Ref ChefSecretsBucket, !Ref ChefName], '/*'] ]
+            - !Join ['', [ 'arn:aws:s3:::', !Ref ChefSecretsBucket ]]
+            - !Join ['', [ 'arn:aws:s3:::', !Ref ChefSecretsBucket, '/*' ]]
         # Allow ability to list all buckets
         - Action: s3:List*
           Effect: Allow
@@ -73,71 +65,6 @@ Resources:
         - Action: autoscaling:*
           Effect: Allow
           Resource: "*"
-        # Allow instances to read their own tags (needed for setup script below)
-        - Action: ec2:DescribeTags
-          Effect: Allow
-          Resource: "*"
-        - Action: cloudwatch:PutMetricData
-          Effect: Allow
-          Resource: "*"
-        - Action: cloudwatch:GetMetricStatistics
-          Effect: Allow
-          Resource: "*"
-        - Action: cloudwatch:ListMetrics
-          Effect: Allow
-          Resource: "*"
-        # Allow instances to write to cloudwatch logs
-        - Action: ["logs:PutLogEvents", "logs:CreateLogStream", "logs:CreateLogGroup"]
-          Effect: Allow
-          # Server instances have to be created in stack called ${ChefServerStack}
-          Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ChefServerStack}-*
-
-  ChefInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      InstanceProfileName: !Sub ${ChefName}-server-profile
-      Path: /
-      Roles:
-      - !Ref ChefRole
-
-  #
-  # Automare Server IAM setup
-  #
-
-  AutomateRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub ${ChefName}-automate-role
-      Path: /
-      AssumeRolePolicyDocument:
-        Statement:
-        - Action:
-          - sts:AssumeRole
-          Effect: Allow
-          Principal:
-            Service:
-            - ec2.amazonaws.com
-        Version: '2012-10-17'
-      ManagedPolicyArns:
-        - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce'] ]
-        - !Join [ ':', ['arn:aws:iam:', !Ref 'AWS::AccountId', 'policy/cs/awsiam-sauce-the-sequel'] ]
-
-  AutomateRolePolicies:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: automate-policy
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        # Allow read actions on chef-client configuration
-        - Action: s3:GetObject
-          Effect: Allow
-          Resource:
-            - !Join [ '', ['arn:aws:s3:::', !If [ChefSecretsBucketNamed, !Ref ChefSecretsBucket, !Ref ChefName], '/chef-client/*'] ]
-        # Allow ability to list all buckets
-        - Action: s3:List*
-          Effect: Allow
-          Resource: arn:aws:s3:::*
         # Allow instance to create a nightly snapshot
         - Action: ["ec2:CreateSnapshot", "ec2:CreateTags", "ec2:DeleteSnapshot", "ec2:DescribeSnapshots", "ec2:DescribeVolumes"]
           Effect: Allow
@@ -158,17 +85,6 @@ Resources:
         # Allow instances to write to cloudwatch logs
         - Action: ["logs:PutLogEvents", "logs:CreateLogStream", "logs:CreateLogGroup"]
           Effect: Allow
-          # Automate instance has to be created in stack called ${ChefAutomateStack}-automate
-          Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ChefAutomateStack}-*
-      Roles:
-      - !Ref AutomateRole
-
-  AutomateInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      InstanceProfileName: !Sub ${ChefName}-automate-profile
-      Path: /
-      Roles:
-      - !Ref AutomateRole
+          Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
 
 Outputs: {}
