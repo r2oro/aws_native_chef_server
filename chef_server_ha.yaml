@@ -158,6 +158,7 @@ Parameters:
     Description: The secret token used to communicate with the Chef Automate Server, for forwarding Visibility data.  Leave blank to disable.
     Type: String
     Default: ''
+    NoEcho: True
   ChefDefaultOrgName:
     Default: ''
     Description: Default Chef organization name (typically only used when migrating from Chef Server 11, otherwise leave blank)

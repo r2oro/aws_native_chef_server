@@ -31,7 +31,7 @@ Parameters:
     Description: SSL Certficate ARN for SSL Certficate (must begin with arn:aws:iam::)
     Type: String
   AutomateDnsRecordName:
-    Description: The DNS A-record name to automatically create in the Route53 zone (if enabled)
+    Description: The DNS A-record name to automatically create
     Type: String
     Default: 'automate'
   AutomateInstanceType:
@@ -51,7 +51,7 @@ Parameters:
     Description: SSL Certficate ARN for SSL Certficate (must begin with arn:aws:iam::)
     Type: String
   ChefServerDnsRecordName:
-    Description: The DNS A-record name to automatically create in the Route53 zone (if enabled)
+    Description: The DNS A-record name to automatically create
     Type: String
     Default: 'chef'
   ChefInstanceType:
@@ -111,7 +111,7 @@ Parameters:
     Description: SSL Certficate ARN for SSL Certficate (must begin with arn:aws:iam::)
     Type: String
   SupermarketDnsRecordName:
-    Description: The DNS A-record name to automatically create in the Route53 zone (if enabled)
+    Description: The DNS A-record name to automatically create
     Type: String
     Default: 'supermarket'
   SupermarketInstanceType:
@@ -163,10 +163,7 @@ Parameters:
     Description: The secret token used to communicate with the Chef Automate Server, for forwarding Visibility data.  Leave blank to disable.
     Type: String
     Default: 93a49a4f2482c64126f7b6015e6b0f30284287ee4054ff8807fb63d9cbd1c506
-  Route53HostedZone:
-    Type: String
-    Default: ''
-    Description: Supply a Route 53 Hosted Zone name (eg. mydomain.com.) for auto-creating a DNS record. Must end in a dot. (Leave blank to disable)
+    NoEcho: True
   AMIFlavor:
     Description: Choose the AMI Flavor, the High-Perf CentOS image or the stock and paid official RHEL image
     Type: String
@@ -240,8 +237,6 @@ Conditions:
     !Equals [ !Ref LoadBalancerSecurityGroupId, '' ]
   CreateFrontendSecurityGroup:
     !Equals [ !Ref FrontendSecurityGroupId, '' ]
-  CreateRoute53Record:
-    !Not [!Equals [ !Ref Route53HostedZone, '' ] ]
   RHELAmiFlavor:
     !Equals [ !Ref AMIFlavor, 'rhel' ]
 
@@ -435,8 +430,7 @@ Resources:
         LoadBalancerSecurityGroupId: !If [CreateLoadBalancerSecurityGroup, !Ref LoadBalancerSecurityGroup, !Ref LoadBalancerSecurityGroupId]
         FrontendSecurityGroupId: !If [CreateFrontendSecurityGroup, !Ref FrontendSecurityGroup, !Ref FrontendSecurityGroupId]
         AutomateIamRole: !If [CreateChefIamRole, !Ref ChefRole, !Ref ExistingIamRole]
-        Route53HostedZone: !If [CreateRoute53Record, !Ref Route53HostedZone, '']
-        Route53RecordName: !Ref AutomateDnsRecordName
+        AutomateDnsRecordName: !Ref AutomateDnsRecordName
         AMIFlavor: !Ref AMIFlavor
         SystemLogsGroup: !Ref SystemLogs
         AppLogsGroup: !Ref AutomateAppLogs
@@ -478,8 +472,7 @@ Resources:
         ChefSecretsBucket: !If [CreateChefSecretsBucket, !Ref ChefBucket, !Ref ExistingSecretsBucket]
         ChefAutomateServerUrl: !Sub "https://${AutomateStack.Outputs.DNSName}"
         ChefAutomateToken: !Ref ChefAutomateToken
-        Route53HostedZone: !If [CreateRoute53Record, !Ref Route53HostedZone, '']
-        Route53RecordName: !Ref ChefServerDnsRecordName
+        ChefServerDnsRecordName: !Ref ChefServerDnsRecordName
         AMIFlavor: !Ref AMIFlavor
         SystemLogsGroup: !Ref SystemLogs
         AppLogsGroup: !Ref ChefAppLogs
@@ -514,8 +507,7 @@ Resources:
         SupermarketIamRole: !If [CreateChefIamRole, !Ref ChefRole, !Ref ExistingIamRole]
         ChefSecretsBucket: !If [CreateChefSecretsBucket, !Ref ChefBucket, !Ref ExistingSecretsBucket]
         ChefStackName: !GetAtt ChefServerStack.Outputs.StackName
-        Route53HostedZone: !If [CreateRoute53Record, !Ref Route53HostedZone, '']
-        Route53RecordName: !Ref SupermarketDnsRecordName
+        SupermarketDnsRecordName: !Ref SupermarketDnsRecordName
         AMIFlavor: !Ref AMIFlavor
         SystemLogsGroup: !Ref SystemLogs
         AppLogsGroup: !Ref SupermarketAppLogs
@@ -538,7 +530,4 @@ Outputs:
       Name: !Sub "${AWS::StackName}-SupermarketURL"
   AutomateAdminPassword:
     Description: The password for the Chef Automate admin user
-    Value: !If
-          - RHELAmiFlavor
-          - !Sub "To retrieve, run: ssh ec2-user@${AutomateStack.Outputs.ServerIP} sudo cat /root/automate-credentials.toml"
-          - !Sub "To retrieve, run: ssh centos@${AutomateStack.Outputs.ServerIP} sudo cat /root/automate-credentials.toml"
+    Value: !Sub "To retrieve, run: ssh gecloud@${AutomateStack.Outputs.ServerIP} sudo cat /root/automate-credentials.toml"

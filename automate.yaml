@@ -37,6 +37,16 @@ Parameters:
   AlertNotificationTopic:
     Description: AWS SNS Alert notification topic
     Type: String
+  AutomateDnsRecordName:
+    Type: String
+    Description: Supply URL for Automation ALB
+  CreateCnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+  DeleteCnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+
   ###############################################################################
   # Performance Settings
   InstanceType:
@@ -56,6 +66,7 @@ Parameters:
     Description: The token used for ingesting Data Collector (Chef) events
     Type: String
     Default: 93a49a4f2482c64126f7b6015e6b0f30284287ee4054ff8807fb63d9cbd1c506
+    NoEcho: True
   LoadBalancerScheme:
     Description: Network Scheme for the ELB
     Type: String
@@ -74,14 +85,6 @@ Parameters:
     Type: String
   ###############################################################################
   # Other Settings
-  Route53HostedZone:
-    Type: String
-    Default: ''
-    Description: Supply a Route 53 Hosted Zone name (eg. mydomain.com.) for auto-creating a DNS record. Must end in a dot. (Leave blank to disable)
-  Route53RecordName:
-    Type: String
-    Default: automate
-    Description: Supply a DNS record name that will be prepended to the Route 53 Hosted Zone
   AMIFlavor:
     Description: Choose the AMI Flavor, the High-Perf CentOS image or the stock and paid official RHEL image
     Type: String
@@ -103,8 +106,6 @@ Metadata:
         - W2507
 
 Conditions:
-  CreateRoute53Record:
-    !Not [!Equals [ !Ref Route53HostedZone, '' ] ]
   RHELAmiFlavor:
     !Equals [ !Ref AMIFlavor, 'rhel' ]
 
@@ -202,7 +203,13 @@ Resources:
       UserData:
         "Fn::Base64": !Sub |
           #!/bin/bash -ex
+          # Install epel repo & CFN-INIT
+          yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+          yum install -y https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.amzn1.noarch.rpm
+          # Setup error handlinf
           trap '/opt/aws/bin/cfn-signal -e 1 --region ${AWS::Region} --stack ${AWS::StackName} --resource AutomateServer' ERR
+          # Install AWS CLI & CFN-INIT
+          yum install -y awscli
           # Update the system first
           yum upgrade --exclude="kernel*" --exclude="dracut*" -y
           # Run before script, make sure to install cfn-init if not installed
@@ -234,6 +241,7 @@ Resources:
               perl-Digest-SHA: []
               zip: []
               unzip: []
+              bind-utils: []
           files:
             /root/chef-automate.zip:
               source: https://packages.chef.io/files/current/automate/latest/chef-automate_linux_amd64.zip
@@ -329,7 +337,7 @@ Resources:
                 #
                 [auth_n.v1.sys.service]
                   a1_data_collector_token = "${AutomateDataCollectorToken}"
-              - { FQDN: !If [CreateRoute53Record, !Ref AutomateDNSRecord, !GetAtt ChefALB.DNSName] }
+              - { FQDN: !Ref AutomateDnsRecordName }
             /etc/sysctl.d/00-chef.conf:
               content: |
                 vm.swappiness=10
@@ -344,6 +352,17 @@ Resources:
                 *   soft  nofile    1048576
                 *   hard  nofile    1048576
           commands:
+            01_setup_dns:
+              command: !Sub:
+                - |
+                  cname=$(host ${AutomateDnsRecordName} | awk '/is an alias for/ {print $6}')
+                  if [ -z "$cname" ]; then
+                    curl ${CreateCnameURL}/${AutomateDnsRecordName}/${albName}
+                  elif [ $cname -ne ${albName}. ]; then
+                    curl ${DeleteCnameURL}/${AutomateDnsRecordName}
+                    curl ${CreateCnameURL}/${AutomateDnsRecordName}/${albName}
+                  fi
+                - { albName: !GetAtt ChefALB.DNSName }
             02_before_script:
               command: |
                 sysctl -p /etc/sysctl.d/00-chef.conf
@@ -483,20 +502,6 @@ Resources:
       - Name: InstanceId
         Value: !Ref AutomateServer
 
-# Route 53 Record
-#########################################################################################
-  AutomateDNSRecord:
-    Type: AWS::Route53::RecordSet
-    Condition: CreateRoute53Record
-    Properties:
-      HostedZoneName: !Ref Route53HostedZone
-      Comment: !Sub Created by Cloudformation ${AWS::StackName}
-      Name: !Sub ${Route53RecordName}.${Route53HostedZone}
-      Type: CNAME
-      TTL: '900'
-      ResourceRecords:
-      - !GetAtt ChefALB.DNSName
-
 # Monitoring
 #########################################################################################
   CPUAlarmHigh:
@@ -598,7 +603,7 @@ Resources:
 Outputs:
   DNSName:
     Description: The DNS name of the load balancer
-    Value: !If [CreateRoute53Record, !Sub "${Route53RecordName}.${Route53HostedZone}", !GetAtt ChefALB.DNSName]
+    Value: !Sub "${AutomateDNSRecord}
     Export:
       Name: !Sub "${AWS::StackName}-DNSName"
   ServerIP:
