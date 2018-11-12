@@ -3,6 +3,9 @@ Description: AWS Native Automate 2 (auto-recovering standalone) v4.0.0
 
 Parameters:
   # Required Parameters
+  ChefName:
+    Description: Supply name for whole Chef infrastructure
+    Type: String
   AutomationBucket:
     Default: 'aws-native-chef-server'
     Type: String
@@ -46,6 +49,12 @@ Parameters:
   DeleteCnameURL:
     Type: String
     Description: Supply URL for creating CNAME records
+  CreateAnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+  DeleteAnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
 
   ###############################################################################
   # Performance Settings
@@ -80,9 +89,6 @@ Parameters:
   FrontendSecurityGroupId:
     Description: Supply a security group for your Automate server (leave blank to have it created for you). Using the default security group is recommended.
     Type: String
-  AutomateIamRole:
-    Description: Supply an IAM Role for the Automate Server (leave blank to have it created for you). NOTE If you supply your own role, you must also provide an S3 Bucket which that role can access
-    Type: String
   ###############################################################################
   # Other Settings
   AMIFlavor:
@@ -98,6 +104,38 @@ Parameters:
   AppLogsGroup:
     Description: The logical name of the Cloudwatch Logs log group for systemn logs
     Type: String
+  LogsRetentionInDays:
+    Description: Specifies the number of days you want to retain cloudwatch log events.
+    Type: Number
+    Default: 90
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+  ###############################################################################
+  # SAML settings (Taken into account if SamlURL is not blank)
+  SamlCert:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Supply SAML generated for the automate authentication
+  SamlURL:
+    Type: String
+    Default: ''
+    Description: Supply SAML URL for authentication
+  SamlUsernameAttr:
+    Type: String
+    Default: ''
+    Description: Supply SAML username query
+  SamlGroupsAttr:
+    Type: String
+    Default: ''
+    Description: Supply SAML group query
+  SamlEntityID:
+    Type: String
+    Default: ''
+    Description: Supply SAML ID of automation
+  SamlAdminGroup:
+    Type: String
+    Default: ''
+    Description: OneIDM DL for automate full access
 
 Metadata:
   cfn-lint:
@@ -110,16 +148,10 @@ Conditions:
     !Equals [ !Ref AMIFlavor, 'rhel' ]
 
 Resources:
-  AutomateInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Path: /
-      Roles:
-      - !Ref AutomateIamRole
-
   ChefALB:
     Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
     Properties:
+      Name: !Sub ${ChefName}-automate-alb
       SecurityGroups:
         - !Ref LoadBalancerSecurityGroupId
       Subnets: !Ref LoadBalancerSubnets
@@ -184,7 +216,7 @@ Resources:
           VolumeSize: !Ref DataVolumeSize
           VolumeType: st1
           DeleteOnTermination: false
-      IamInstanceProfile: !Ref AutomateInstanceProfile
+      IamInstanceProfile: !Sub ${ChefName}-profile
       ImageId: !Ref ImageId
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
@@ -206,29 +238,32 @@ Resources:
           # Install epel repo & CFN-INIT
           yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
           yum install -y https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.amzn1.noarch.rpm
-          # Setup error handlinf
+          export PYTHONPATH=/usr/local/lib/python2.7/site-packages
+          # Setup error handling
           trap '/opt/aws/bin/cfn-signal -e 1 --region ${AWS::Region} --stack ${AWS::StackName} --resource AutomateServer' ERR
-          # Install AWS CLI & CFN-INIT
-          yum install -y awscli
           # Update the system first
           yum upgrade --exclude="kernel*" --exclude="dracut*" -y
+          # Install AWS CLI
+          yum install -y awscli
           # Run before script, make sure to install cfn-init if not installed
           # attempt to fetch the script first as a signed request (private bucket), then unsigned, then fallback
-          aws s3 cp s3://${AutomationBucket}/files/before.sh /root/before.sh || \
-            curl -s https://${AutomationBucket}.s3.amazonaws.com/files/before.sh -o /root/before.sh || \
+          if
+            aws s3 cp s3://${AutomationBucket}/files/before.sh /root/before.sh || \
             curl -s https://aws-native-chef-server.s3.amazonaws.com/files/before.sh -o /root/before.sh
-          bash -ex /root/before.sh
+          then
+            bash -ex /root/before.sh
+          fi
           # Execute AWS::CloudFormation::Init
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource AutomateServer --region ${AWS::Region}
           /opt/aws/bin/cfn-signal -e 0 --region ${AWS::Region} --stack ${AWS::StackName} --resource AutomateServer
     CreationPolicy:
       ResourceSignal:
         Count: 1
-        Timeout: PT10M
+        Timeout: PT20M
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
-          default: [awslogs, automate_setup, nightly_snapshots]
+          default: [awslogs, automate_setup, nightly_snapshots, chef_client_bootstrap]
         automate_setup:
           packages:
             yum:
@@ -262,6 +297,11 @@ Resources:
                     channel = "current"
                     upgrade_strategy = "at-once"
                     deployment_type = "local"
+
+                # Set data retension
+                [ingest.v1.sys.service]
+                  purge_converge_history_after_days = ${LogsRetentionInDays}
+                  purge_actions_after_days = ${LogsRetentionInDays}
 
                 # Load Balancer service configuration.
                 [load_balancer]
@@ -334,9 +374,19 @@ Resources:
                     # The Chef Software provided license token required to run Chef Automate.
                     # This can also be set with the "chef-automate license apply" command.
                     license = ""
-                #
+
+                # Token
                 [auth_n.v1.sys.service]
                   a1_data_collector_token = "${AutomateDataCollectorToken}"
+
+                # GE SAML integration
+                [dex.v1.sys.connectors.saml]
+                  ca_contents = """${SamlCert}"""
+                  sso_url = "${SamlURL}"
+                  email_attr = "mail"
+                  username_attr = "${SamlUsernameAttr}"
+                  groups_attr = "${SamlGroupsAttr}"
+                  entity_issuer = "${SamlEntityID}"
               - { FQDN: !Ref AutomateDnsRecordName }
             /etc/sysctl.d/00-chef.conf:
               content: |
@@ -351,17 +401,36 @@ Resources:
                 *   hard  nproc     65536
                 *   soft  nofile    1048576
                 *   hard  nofile    1048576
+            /root/.aws/config:
+              content: !Sub |
+                [default]
+                region = ${AWS::Region}
           commands:
             01_setup_dns:
-              command: !Sub:
+              command: !Sub
                 - |
-                  cname=$(host ${AutomateDnsRecordName} | awk '/is an alias for/ {print $6}')
+                  # Register Chef Automate ALB address if it does not exit or is different
+                  cname=$(dig ${AutomateDnsRecordName} |
+                    awk '/^${AutomateDnsRecordName}\..*\sIN\s+CNAME\s/ {print $5}')
                   if [ -z "$cname" ]; then
-                    curl ${CreateCnameURL}/${AutomateDnsRecordName}/${albName}
-                  elif [ $cname -ne ${albName}. ]; then
-                    curl ${DeleteCnameURL}/${AutomateDnsRecordName}
-                    curl ${CreateCnameURL}/${AutomateDnsRecordName}/${albName}
+                    curl -s ${CreateCnameURL}/${AutomateDnsRecordName}/${albName}
+                  elif [ $cname != ${albName}. ]; then
+                    curl -s ${DeleteCnameURL}/${AutomateDnsRecordName}
+                    curl -s ${CreateCnameURL}/${AutomateDnsRecordName}/${albName}
                   fi
+                  # Register instance A record
+                  fqdn=$(echo ${AutomateDnsRecordName}|sed 's/^\([^.]*\)./\1-i./')
+                  existingip=$(dig $fqdn | awk "/^$fqdn\..*\sIN\s+A\s/ "'{print $5}')
+                  if [ -n "$existingip" ]; then
+                    curl -s ${DeleteAnameURL}?fqdn=$fqdn\&ipaddress=$existingip
+                  fi
+                  curl -s ${CreateAnameURL}?fqdn=$fqdn\&ipaddress=$(hostname -I)
+                  # Change name of the server
+                  HOSTNAME=$(echo $fqdn | sed 's/\..*$//')
+                  sed -i "/$(hostname)/d" /etc/hosts
+                  echo "$(hostname -I) $HOSTNAME $fqdn" >> /etc/hosts
+                  hostnamectl set-hostname --static $HOSTNAME
+                  echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
                 - { albName: !GetAtt ChefALB.DNSName }
             02_before_script:
               command: |
@@ -370,7 +439,8 @@ Resources:
                 pvs | grep nvme1n1 || pvcreate /dev/nvme1n1
                 vgs | grep data-vg || vgcreate data-vg /dev/nvme1n1
                 lvs | grep data-lv || (lvcreate -n data-lv -l 95%VG data-vg ; mkfs.xfs /dev/data-vg/data-lv)
-                grep hab /proc/mounts || mount /dev/data-vg/data-lv /hab
+                echo /dev/data-vg/data-lv /hab xfs defaults 0 0 >> /etc/fstab
+                mount -a
             03_configure_automate:
               command: |
                 cd /root
@@ -378,10 +448,12 @@ Resources:
                 /usr/local/sbin/chef-automate deploy /etc/automate-config.toml --accept-terms-and-mlsa --skip-preflight
             04_after_script:
               command: !Sub |
-                # attempt to fetch the script first as a signed request (private bucket), then unsigned (public bucket)
-                aws s3 cp s3://${AutomationBucket}/files/after.sh /root/after.sh || \
-                  curl -s https://${AutomationBucket}.s3.amazonaws.com/files/after.sh -o /root/after.sh
-                bash -ex /root/after.sh
+                # attempt to fetch the script and if it exists execute it.
+                if
+                  aws s3 cp s3://${AutomationBucket}/files/after.sh /root/after.sh
+                then
+                  bash -ex /root/after.sh
+                fi
             05_configure_cloudwatch_monitoring:
               command: |
                 mkdir /opt/cloudwatch_monitoring
@@ -460,6 +532,54 @@ Resources:
               command: !Sub |
                 mkdir -p /var/lib/awslogs
                 python /root/awslogs-agent-setup.py --region ${AWS::Region} --non-interactive -c /etc/awslogs/awslogs.conf
+        chef_client_bootstrap:
+          files:
+            /etc/chef/bootstrap-chef_client.sh:
+              content: !Sub |
+                #!/bin/bash
+
+                if
+                  ! aws s3 ls ${AutomationBucket}/chef-client
+                then
+                  echo No chef-client setup configuration
+                  exit 0
+                fi
+
+                if
+                  ! aws s3 sync s3://${AutomationBucket}/chef-client/ /etc/chef/
+                then
+                  echo Cannot retrieve chef-client configuration
+                  exit -1
+                fi
+
+                chmod 0700 /etc/chef
+                if
+                  ! [ -r /etc/chef/setup.sh ]
+                then
+                  echo No chef-client setup.sh
+                  exit 0
+                fi
+
+                if
+                  /bin/bash /etc/chef/setup.sh
+                then
+                  crontab -l | grep -v /etc/chef/bootstrap-chef_client.sh | crontab
+                  rm /etc/chef/setup.sh /etc/chef/bootstrap-chef_client.sh
+                  echo chef-client successfuly bootstraped
+                  exit 0
+                fi
+
+                echo chef-client bootstrap failed
+                exit -1
+              mode: '000755'
+              owner: root
+              group: root
+          commands:
+            01_set_crontab_and_run:
+              command: |
+                RUN_AT=$(( ($(date +"%M") + 30) % 60 ))
+                { crontab -l; echo "$RUN_AT * * * * /etc/chef/bootstrap-chef_client.sh"; } | crontab
+                /etc/chef/bootstrap-chef_client.sh
 
 # EC2 System AutoRecovery
 # https://aws.amazon.com/blogs/aws/new-auto-recovery-for-amazon-ec2/
@@ -502,8 +622,6 @@ Resources:
       - Name: InstanceId
         Value: !Ref AutomateServer
 
-# Monitoring
-#########################################################################################
   CPUAlarmHigh:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -603,9 +721,6 @@ Resources:
 Outputs:
   DNSName:
     Description: The DNS name of the load balancer
-    Value: !Sub "${AutomateDNSRecord}
+    Value: !Ref AutomateDnsRecordName
     Export:
       Name: !Sub "${AWS::StackName}-DNSName"
-  ServerIP:
-    Description: The IP Address of the Automate Server
-    Value: !GetAtt AutomateServer.PublicIp

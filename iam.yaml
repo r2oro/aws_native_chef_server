@@ -51,7 +51,7 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-        # Allow all actions to one bucket (the supplied one, or the one you provided)
+        # Allow all actions to CheSecrets bucket
         - Action: s3:*
           Effect: Allow
           Resource:
@@ -86,5 +86,13 @@ Resources:
         - Action: ["logs:PutLogEvents", "logs:CreateLogStream", "logs:CreateLogGroup"]
           Effect: Allow
           Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+
+  ChefInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      InstanceProfileName: !Sub ${ChefName}-profile
+      Roles:
+      - !Ref ChefRole
 
 Outputs: {}

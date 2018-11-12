@@ -3,6 +3,9 @@ Description: AWS Native Chef Server (auto-scaling HA) v4.0.0
 
 Parameters:
   # Required Parameters
+  ChefName:
+    Description: Supply name for whole Chef infrastructure
+    Type: String
   AutomationBucket:
     Default: 'aws-native-chef-server'
     Type: String
@@ -113,6 +116,26 @@ Parameters:
     Description: The URL to the push jobs server package which will be downloaded
     Type: String
     Default: 'https://packages.chef.io/files/stable/opscode-push-jobs-server/2.2.8/el/7/opscode-push-jobs-server-2.2.8-1.el7.x86_64.rpm'
+  ReportingPackage:
+    Description: The URL to the reporting package which will be downloaded
+    Type: String
+    Default: 'https://packages.chef.io/files/stable/opscode-reporting/1.8.0/el/7/opscode-reporting-1.8.0-1.el7.x86_64.rpm'
+  FilebeatPackage:
+    Description: Filebeat rpm URL
+    Type: String
+    Default: 'https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-5.6.6-x86_64.rpm'
+  SigningProxy:
+    Description: SigningProxy binary location
+    Type: String
+    Default: 'https://github.com/chef-customers/aws-signing-proxy/releases/download/v0.3.0/aws-signing-proxy'
+  # BeforeScriptLocation:
+  #   Description: The S3 location of the script which runs before the Main script (optional)
+  #   Type: String
+  #   Default: ''
+  # AfterScriptLocation:
+  #   Description: The S3 location of the script which runs after the Main script (optional)
+  #   Type: String
+  #   Default: ''
   ###############################################################################
   # Security Settings
   LoadBalancerScheme:
@@ -142,22 +165,22 @@ Parameters:
     Default: 'false'
     Description: Allow users to sign themselves up to the chef server? (enter true or false)
     Type: String
-  ChefServerIamRole:
-    Description: Supply an IAM Role for the Chef Servers (leave blank to have it created for you). NOTE If you supply your own role, you must also provide an S3 Bucket which that role can access
-    Type: String
   ChefSecretsBucket:
     Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to (leave blank to have it created for you)
     Type: String
+  LdapConfiguration:
+    Description: String with LDAP configuration to be injected into /etc/opscode/chef-server.rb
+    Type: String
+    NoEcho: true
+    Default: ''
   ###############################################################################
   # Other Settings
   ChefAutomateServerUrl:
     Description: The URL of the Chef Automate Server, for forwarding Visibility data.  Leave blank to disable.
     Type: String
-    Default: ''
   ChefAutomateToken:
     Description: The secret token used to communicate with the Chef Automate Server, for forwarding Visibility data.  Leave blank to disable.
     Type: String
-    Default: ''
     NoEcho: True
   ChefDefaultOrgName:
     Default: ''
@@ -167,14 +190,16 @@ Parameters:
     Default: ''
     Type: String
     Description: The S3 location of a custom chef-server configuration snippet that will be injected into the chef-server.rb (optional)
-  Route53HostedZone:
-    Type: String
-    Default: ''
-    Description: Supply a Route 53 Hosted Zone name (eg. mydomain.com.) for auto-creating a DNS record. Must end in a dot. (Leave blank to disable)
-  Route53RecordName:
+  ChefServerDnsRecordName:
     Type: String
     Default: 'chef'
-    Description: Supply a DNS record name that will be prepended to the Route 53 Hosted Zone
+    Description: DNS CNAME to use for chef server ALB
+  ChefPushJobsDnsRecordName:
+    Type: String
+    Description: DNS CNAME to use for push jobs ELB
+  SupermarketDnsRecordName:
+    Type: String
+    Description: DNS name to use for Chef Supermarket
   AMIFlavor:
     Description: Choose the AMI Flavor, the High-Perf CentOS image or the stock and paid official RHEL image
     Type: String
@@ -188,6 +213,18 @@ Parameters:
   AppLogsGroup:
     Description: The logical name of the Cloudwatch Logs log group for systemn logs
     Type: String
+  CreateCnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+  DeleteCnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+  CreateAnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+  DeleteAnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
 
 Metadata:
   cfn-lint:
@@ -196,8 +233,6 @@ Metadata:
         - W2507
 
 Conditions:
-  CreateRoute53Record:
-    !Not [!Equals [ !Ref Route53HostedZone, '' ] ]
   RHELAmiFlavor:
     !Equals [ !Ref AMIFlavor, 'rhel' ]
 
@@ -285,21 +320,15 @@ Resources:
       Cooldown: '60'
       ScalingAdjustment: -1
 
-  ChefInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Path: /
-      Roles:
-      - !Ref ChefServerIamRole
-
   # A special ELB just for Push Jobs traffic (TCP ports 10000-10003)
   # Note: Push Jobs server isn't truly HA. Although job state is stored in the database,
   #       all node state is stored ONLY in memory. Therefore we can only have 1
   #       active push jobs server at a time. An elegant solution for this in AWS
   #       is to have all Push Jobs traffic only routed to the BootStrap ASG
   ChefPJELB:
-    Type: "AWS::ElasticLoadBalancing::LoadBalancer"
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
     Properties:
+      LoadBalancerName: !Sub ${ChefName}-server-pj-elb
       SecurityGroups:
         - !Ref LoadBalancerSecurityGroupId
       Subnets: !Ref ChefServerSubnets
@@ -325,6 +354,7 @@ Resources:
   ChefALB:
     Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
     Properties:
+      Name: !Sub ${ChefName}-server-alb
       SecurityGroups:
         - !Ref LoadBalancerSecurityGroupId
       Subnets: !Ref ChefServerSubnets
@@ -417,7 +447,7 @@ Resources:
           VolumeSize: 20
           VolumeType: gp2
           DeleteOnTermination: true
-      IamInstanceProfile: !Ref ChefInstanceProfile
+      IamInstanceProfile: !Sub ${ChefName}-profile
       ImageId: !Ref ImageId
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
@@ -427,19 +457,25 @@ Resources:
       UserData:
         "Fn::Base64": !Sub |
           #!/bin/bash -ex
+          # Install epel repo & CFN-INIT
+          yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+          yum install -y https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.amzn1.noarch.rpm
+          export PYTHONPATH=/usr/local/lib/python2.7/site-packages
           trap "{
             /opt/aws/bin/cfn-signal -e 1 --region ${AWS::Region} --stack ${AWS::StackName} --resource ServerLaunchConfig
             # Uncomment this next line before going to production
-            # aws autoscaling set-instance-health --health-status Unhealthy --region ${AWS::Region} --instance-id $(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+            aws autoscaling set-instance-health --health-status Unhealthy --region ${AWS::Region} --instance-id $(curl -s http://169.254.169.254/latest/meta-data/instance-id)
           }" ERR
           # Update the system first
           yum upgrade --exclude="kernel*" --exclude="dracut*" -y
-          # Run before script, make sure to install cfn-init if not installed
-          # attempt to fetch the script first as a signed request (private bucket), then unsigned (public bucket)
-          aws s3 cp s3://${AutomationBucket}/files/before.sh /root/before.sh || \
-            curl -s https://${AutomationBucket}.s3.amazonaws.com/files/before.sh -o /root/before.sh || \
-            curl -s https://aws-native-chef-server.s3.amazonaws.com/files/before.sh -o /root/before.sh
-          bash -ex /root/before.sh
+          # install AWS CLI
+          yum install -y awscli
+          # attempt to fetch the script first as a signed request (private bucket)
+          if
+            aws s3 cp s3://${AutomationBucket}/files/after.sh /root/before.sh
+          then
+            bash -ex /root/before.sh
+          fi
           # Execute AWS::CloudFormation::Init
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource ServerLaunchConfig --region ${AWS::Region}
           # All is well so signal success and let CF know wait function is complete
@@ -447,11 +483,11 @@ Resources:
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
-          default: [awslogs, es_proxy_setup, chef_server_setup, filebeat]
+          default: [awslogs, es_proxy_setup, chef_server_setup, filebeat, chef_client_bootstrap]
         es_proxy_setup:
           files:
             /usr/local/bin/aws-signing-proxy:
-              source: https://github.com/chef-customers/aws-signing-proxy/releases/download/v0.5.0/aws-signing-proxy
+              source: !Sub ${SigningProxy}
               mode: '000755'
             /etc/systemd/system/aws-signing-proxy.service:
               content: |
@@ -482,6 +518,7 @@ Resources:
               chef-server-core: !Sub ${ChefServerPackage}
               chef-manage: !Sub ${ChefManagePackage}
               opscode-push-jobs-server: !Sub ${PushJobsPackage}
+              opscode-reporting: !Sub ${ReportingPackage}
             yum:
               perl: []
               perl-DateTime: []
@@ -490,18 +527,18 @@ Resources:
               perl-Digest-SHA: []
               zip: []
               unzip: []
+              bind-utils: []
           files:
             /etc/opscode-push-jobs-server/opscode-push-jobs-server.rb:
               content: !Sub |
                 opscode_pushy_server['vip'] = '127.0.0.1'
-                opscode_pushy_server['server_name_advertised'] = '${ChefPJELB.DNSName}'
+                opscode_pushy_server['server_name_advertised'] = '${ChefPushJobsDnsRecordName}'
             /etc/chef-manage/manage.rb:
               content: !Sub |
                 disable_sign_up ${DisableSignup}
             /etc/opscode/chef-server.rb:
-              content: !Sub
-              - |
-                api_fqdn '${DNSNAME}'.downcase
+              content: !Sub |
+                api_fqdn '${ChefServerDnsRecordName}'.downcase
                 nginx['enable_non_ssl'] = true
                 license['nodes'] = ${LicenseCount}
                 postgresql['external'] = true
@@ -533,7 +570,7 @@ Resources:
                 bookshelf['storage_type'] = :sql
                 bookshelf['db_pool_init'] = 10
                 bookshelf['db_pool_max'] = 20
-                bookshelf['vip'] = '${DNSNAME}'.downcase
+                bookshelf['vip'] = '${ChefServerDnsRecordName}'.downcase
                 rabbitmq['enable'] = false
                 rabbitmq['management_enabled'] = false
                 rabbitmq['queue_length_monitor_enabled'] = false
@@ -541,15 +578,16 @@ Resources:
                 dark_launch['actions'] = false
                 oc_id['applications'] ||= {}
                 oc_id['applications']['supermarket'] = {
-                  'redirect_uri' => 'https://supermarket.${Route53HostedZone}/auth/chef_oauth2/callback'
+                  'redirect_uri' => 'https://${SupermarketDnsRecordName}/auth/chef_oauth2/callback'
                 }
                 default_orgname '${ChefDefaultOrgName}'.empty? ? null : '${ChefDefaultOrgName}'
-                # special handling for Chef Automate URL and Token which might be empty strings
-                unless '${ChefAutomateServerUrl}'.empty? || '${ChefAutomateToken}'.empty?
-                  data_collector['root_url'] = '${ChefAutomateServerUrl}'
-                  data_collector['token'] = '${ChefAutomateToken}'
-                end
-              - { DNSNAME: !If [CreateRoute53Record, !Sub "${Route53RecordName}.${Route53HostedZone}", !GetAtt ChefALB.DNSName] }
+                data_collector['root_url'] = '${ChefAutomateServerUrl}'
+                data_collector['token'] = '${ChefAutomateToken}'
+                # Add for chef client run forwarding
+                data_collector['proxy']= true
+                # Add for compliance scanning
+                profiles['root_url'] = '${ChefAutomateServerUrl}'
+                ${LdapConfiguration}
             /etc/sysctl.d/00-chef.conf:
               content: |
                 vm.swappiness=10
@@ -563,7 +601,55 @@ Resources:
                 *   hard  nproc     65536
                 *   soft  nofile    1048576
                 *   hard  nofile    1048576
+            /root/.aws/config:
+              content: !Sub |
+                [default]
+                region = ${AWS::Region}
           commands:
+            01_setup_dns:
+              command: !Sub
+                - |
+                  # Register Chef Server ALB address if it does not exit or is different
+                  cname=$(dig ${ChefServerDnsRecordName} |
+                    awk '/^${ChefServerDnsRecordName}\..*\sIN\s+CNAME\s/ {print $5}')
+                  if [ -z "$cname" ]; then
+                    curl -s ${CreateCnameURL}/${ChefServerDnsRecordName}/${ServerALBName}
+                  elif [ $cname != ${ServerALBName}. ]; then
+                    curl -s ${DeleteCnameURL}/${ChefServerDnsRecordName}
+                    curl -s ${CreateCnameURL}/${ChefServerDnsRecordName}/${ServerALBName}
+                  fi
+                  # Register Chef Pushjobs ELB address if it does not exit or is different
+                  cname=$(dig ${ChefPushJobsDnsRecordName} |
+                    awk '/^${ChefPushJobsDnsRecordName}\..*\sIN\s+CNAME\s/ {print $5}')
+                  if [ -z "$cname" ]; then
+                    curl -s ${CreateCnameURL}/${ChefPushJobsDnsRecordName}/${PushELBName}
+                  elif [ $cname != ${PushELBName}. ]; then
+                    curl -s ${DeleteCnameURL}/${ChefPushJobsDnsRecordName}
+                    curl -s ${CreateCnameURL}/${ChefPushJobsDnsRecordName}/${PushELBName}
+                  fi
+                  # Register instance A record
+                  iid=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+                  if
+                    aws autoscaling describe-auto-scaling-instances --instance-ids=$iid |
+                    grep BootstrapAutoScaleGroup
+                  then # This is bootstrap instance (should be only one)
+                    i="i"
+                  else # This is general frontend instance (can't assign number, make it unique)
+                    i=$iid
+                  fi
+                  fqdn=$(echo ${ChefServerDnsRecordName}|sed "s/^\([^.]*\)./\1-$i./")
+                  existingip=$(dig $fqdn | awk "/^$fqdn\..*\sIN\s+A\s/ "'{print $5}')
+                  if [ -n "$existingip" ]; then
+                    curl -s ${DeleteAnameURL}?fqdn=$fqdn\&ipaddress=$existingip
+                  fi
+                  curl -s ${CreateAnameURL}?fqdn=$fqdn\&ipaddress=$(hostname -I)
+                  # Change name of the server
+                  HOSTNAME=$(echo $fqdn | sed 's/\..*$//')
+                  sed -i "/$(hostname)/d" /etc/hosts
+                  echo "$(hostname -I) $HOSTNAME $fqdn" >> /etc/hosts
+                  hostnamectl set-hostname --static $HOSTNAME
+                  echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
+                - { ServerALBName: !GetAtt ChefALB.DNSName, PushELBName: !GetAtt ChefPJELB.DNSName }
             02_before_script:
               command: !Sub |
                 sysctl -p /etc/sysctl.d/00-chef.conf
@@ -580,19 +666,21 @@ Resources:
                 export WAITHANDLE="${WaitHandle}"
                 # attempt to fetch the script first as a signed request (private bucket), then unsigned (public bucket)
                 aws s3 cp s3://${AutomationBucket}/files/main.sh /root/main.sh || \
-                  aws s3 cp --no-sign-request s3://${AutomationBucket}/files/main.sh /root/main.sh
+                  aws s3 cp --no-sign-request s3://aws-native-chef-server/files/main.sh /root/main.sh
                 bash -x /root/main.sh
             04_after_script:
               command: !Sub |
-                # attempt to fetch the script first as a signed request (private bucket), then unsigned (public bucket)
-                aws s3 cp s3://${AutomationBucket}/files/after.sh /root/after.sh || \
-                  curl -s https://${AutomationBucket}.s3.amazonaws.com/files/after.sh -o /root/after.sh
-                bash -ex /root/after.sh
+                # attempt to fetch the script and if it exists execute it.
+                if
+                  aws s3 cp s3://${AutomationBucket}/files/after.sh /root/after.sh
+                then
+                  bash -ex /root/after.sh
+                fi
             05_configure_cloudwatch_monitoring:
               command: |
                 mkdir /opt/cloudwatch_monitoring
                 cd /opt/cloudwatch_monitoring
-                curl http://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip -O
+                curl -s http://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.1.zip -O
                 unzip CloudWatchMonitoringScripts-1.2.1.zip
                 rm -f CloudWatchMonitoringScripts-1.2.1.zip
                 crontab -l | { cat; echo "*/5 * * * * /opt/cloudwatch_monitoring/aws-scripts-mon/mon-put-instance-data.pl --auto-scaling --mem-util --disk-space-util --disk-path=/ --from-cron"; } | crontab -
@@ -711,7 +799,7 @@ Resources:
         filebeat:
           packages:
             rpm:
-              filebeat: https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-5.6.6-x86_64.rpm
+              filebeat: !Sub ${FilebeatPackage}
           files:
             /etc/filebeat/filebeat.yml:
               content: |
@@ -734,13 +822,61 @@ Resources:
           commands:
             01_systemd:
               command: systemctl daemon-reload && systemctl start filebeat.service
+        chef_client_bootstrap:
+          files:
+            /etc/chef/bootstrap-chef_client.sh:
+              content: !Sub |
+                #!/bin/bash
+
+                if
+                  ! aws s3 ls ${ChefSecretsBucket}/chef-client
+                then
+                  echo No chef-client setup configuration
+                  exit 0
+                fi
+
+                if
+                  ! aws s3 sync s3://${ChefSecretsBucket}/chef-client/ /etc/chef/
+                then
+                  echo Cannot retrieve chef-client configuration
+                  exit -1
+                fi
+
+                chmod 0700 /etc/chef
+                if
+                  ! [ -r /etc/chef/setup.sh ]
+                then
+                  echo No chef-client setup.sh
+                  exit 0
+                fi
+
+                if
+                  /bin/bash /etc/chef/setup.sh
+                then
+                  crontab -l | grep -v /etc/chef/bootstrap-chef_client.sh | crontab
+                  rm /etc/chef/setup.sh /etc/chef/bootstrap-chef_client.sh
+                  echo chef-client successfuly bootstraped
+                  exit 0
+                fi
+
+                echo chef-client bootstrap failed
+                exit -1
+              mode: '000755'
+              owner: root
+              group: root
+          commands:
+            01_set_crontab_and_run:
+              command: |
+                RUN_AT=$(( ($(date +"%M") + 30) % 60 ))
+                { crontab -l; echo "$RUN_AT * * * * /etc/chef/bootstrap-chef_client.sh"; } | crontab
+                /etc/chef/bootstrap-chef_client.sh
 
   WaitCondition:
     Type: AWS::CloudFormation::WaitCondition
     DependsOn: ServerLaunchConfig
     Properties:
       Handle: !Ref WaitHandle
-      Timeout: '1500'
+      Timeout: '3600'
 
   WaitHandle:
     Type: AWS::CloudFormation::WaitConditionHandle
@@ -778,23 +914,8 @@ Resources:
         ElasticSearchVersion: !Ref ElasticSearchVersion
         ElasticSearchShardCount: !Ref ElasticSearchShardCount
         FrontendSecurityGroupId: !Ref FrontendSecurityGroupId
-        ChefRole: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ChefServerIamRole}"
+        ChefRole: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ChefName}-role"
         AlertNotificationTopic: !Ref AlertNotificationTopic
-
-# Route 53 Record
-#########################################################################################
-  ChefLBDNSRecord:
-    Type: AWS::Route53::RecordSet
-    Condition: CreateRoute53Record
-    Properties:
-      HostedZoneName: !Ref Route53HostedZone
-      Comment: !Sub Created by Cloudformation ${AWS::StackName}
-      Name: !Sub ${Route53RecordName}.${Route53HostedZone}
-      Type: CNAME
-      TTL: '900'
-      ResourceRecords:
-      - !GetAtt ChefALB.DNSName
-
 
 # Operations Dashboard (Cloudwatch)
 #########################################################################################
@@ -928,7 +1049,7 @@ Resources:
 Outputs:
   DNSName:
     Description: The DNS name of the load balancer
-    Value: !If [CreateRoute53Record, !Sub "${Route53RecordName}.${Route53HostedZone}", !GetAtt ChefALB.DNSName]
+    Value: !Ref ChefServerDnsRecordName
     Export:
       Name: !Sub "${AWS::StackName}-DNSName"
   StackName:

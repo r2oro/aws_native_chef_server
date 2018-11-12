@@ -3,6 +3,9 @@ Description: AWS Native Chef Stack v4.0.0
 
 Parameters:
   # Required Parameters
+  ChefName:
+    Description: Supply name for whole Chef infrastructure
+    Type: String
   AutomationBucket:
     Default: 'aws-native-chef-server'
     Type: String
@@ -45,15 +48,50 @@ Parameters:
     Description: Amount of storage space to allocate on a dedicated data volume (must be between 500 and 16000)
     Type: Number
     Default: 1000
+  AutomateSamlCert:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Supply SAML generated for the automate authentication
+  AutomateSamlURL:
+    Type: String
+    Default: ''
+    Description: Supply SAML URL for authentication
+  AutomateSamlUsernameAttr:
+    Type: String
+    Default: ''
+    Description: Supply SAML username query
+  AutomateSamlGroupsAttr:
+    Type: String
+    Default: ''
+    Description: Supply SAML group query
+  AutomateSamlEntityID:
+    Type: String
+    Default: ''
+    Description: Supply SAML ID of automation
+  AutomateSamlAdminGroup:
+    Type: String
+    Default: ''
+    Description: OneIDM DL for automate full access
+
   ###############################################################################
   # Chef Server Stack Settings
   ChefSSLCertificateARN:
     Description: SSL Certficate ARN for SSL Certficate (must begin with arn:aws:iam::)
     Type: String
   ChefServerDnsRecordName:
-    Description: The DNS A-record name to automatically create
+    Description: The DNS A-record name to automatically create for Chef Server ALB
     Type: String
     Default: 'chef'
+  ChefPushJobsDnsRecordName:
+    Description: The DNS A-record name to automatically create for Push Jobs ELB
+    Type: String
+    Default: 'chef'
+  ChefServerLdapConfiguration:
+    Description: String with LDAP configuration to be injected into /etc/opscode/chef-server.rb
+    Type: String
+    NoEcho: true
+    Default: ''
   ChefInstanceType:
     Description: EC2 Instance type for Chef Server Frontends (high-CPU recommended)
     Default: c5.large
@@ -149,10 +187,6 @@ Parameters:
     AllowedValues:
     - true
     - false
-  ExistingIamRole:
-    Description: Supply an IAM Role for the Chef Servers (leave blank to have it created for you). NOTE If you supply your own role, you must also provide an S3 Bucket which that role can access
-    Type: String
-    Default: ''
   ExistingSecretsBucket:
     Description: Supply an S3 Bucket name for the Chef Servers to read/write config files to (leave blank to have it created for you)
     Type: String
@@ -176,61 +210,26 @@ Parameters:
     Type: Number
     Default: 90
     AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+  CreateCnameURL:
+    Description: URL of API endpoint for CNAME creation
+    Type: String
+  DeleteCnameURL:
+    Description: URL of API endpoint for CNAME deletion
+    Type: String
+  CreateAnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+  DeleteAnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
 
 Metadata:
   cfn-lint:
     config:
       ignore_checks:
         - W2507
-  # AWS::CloudFormation::Interface:
-    # ParameterGroups:
-    #   - Label:
-    #       default: "Required Parameters"
-    #     Parameters:
-    #       - VPC
-    #       - ChefServerSubnets
-    #       - SSLCertificateARN
-    #       - InboundAdminSecurityGroupId
-    #       - KeyName
-    #       - DBPassword
-    #       - ContactEmail
-    #       - ContactDept
-    #   - Label:
-    #       default: "Performance Settings"
-    #     Parameters:
-    #       - InstanceType
-    #       - MaxFrontendInstances
-    #       - MinFrontendInstances
-    #       - LicenseCount
-    #       - DBInstanceClass
-    #       - DBAllocatedStorage
-    #       - DBIops
-    #       - ElasticSearchInstanceType
-    #       - ElasticSearchVersion
-    #       - ElasticSearchShardCount
-    #       - ElasticSearchReplicaCount
-    #   - Label:
-    #       default: "Package Versions & Locations"
-    #     Parameters:
-    #       - ChefServerPackage
-    #       - ChefManagePackage
-    #       - PushJobsPackage
-    #       - BeforeScriptLocation
-    #       - AfterScriptLocation
-    #   - Label:
-    #       default: "Security Settings"
-    #     Parameters:
-    #       - LoadBalancerScheme
-    #       - LoadBalancerSecurityGroupId
-    #       - FrontendSecurityGroupId
-    #       - ChefServerAssociatePublicIpAddress
-    #       - DisableSignup
-    #       - ChefServerIamRole
-    #       - ChefSecretsBucket
 
 Conditions:
-  CreateChefIamRole:
-    !Equals [ !Ref ExistingIamRole, '' ]
   CreateChefSecretsBucket:
     !Equals [ !Ref ExistingSecretsBucket, '' ]
   CreateLoadBalancerSecurityGroup:
@@ -254,67 +253,6 @@ Mappings:
       centos: ami-dcc050a3
 
 Resources:
-  ChefRole:
-    Condition: CreateChefIamRole
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-        - Action:
-          - sts:AssumeRole
-          Effect: Allow
-          Principal:
-            Service:
-            - ec2.amazonaws.com
-        Version: '2012-10-17'
-      Path: /
-
-  RolePolicies:
-    Condition: CreateChefIamRole
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: !Sub ${AWS::StackName}-ChefStack-Policy
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        # Allow all actions to one bucket (the supplied one, or the one you provided)
-        - Action: s3:*
-          Effect: Allow
-          Resource:
-            - !Join ['', [ 'arn:aws:s3:::', !If [CreateChefSecretsBucket, !Ref ChefBucket, !Ref ExistingSecretsBucket] ]]
-            - !Join ['', [ 'arn:aws:s3:::', !If [CreateChefSecretsBucket, !Ref ChefBucket, !Ref ExistingSecretsBucket], '/*' ]]
-        # Allow ability to list all buckets
-        - Action: s3:List*
-          Effect: Allow
-          Resource: arn:aws:s3:::*
-        # Allow instances to set themselves as unhealthy if one of the scripts fail
-        - Action: autoscaling:*
-          Effect: Allow
-          Resource: "*"
-        # Allow instance to create a nightly snapshot
-        - Action: ["ec2:CreateSnapshot", "ec2:CreateTags", "ec2:DeleteSnapshot", "ec2:DescribeSnapshots", "ec2:DescribeVolumes"]
-          Effect: Allow
-          Resource: "*"
-        # Allow instances to read their own tags (needed for setup script below)
-        - Action: ec2:DescribeTags
-          Effect: Allow
-          Resource: "*"
-        - Action: cloudwatch:PutMetricData
-          Effect: Allow
-          Resource: "*"
-        - Action: cloudwatch:GetMetricStatistics
-          Effect: Allow
-          Resource: "*"
-        - Action: cloudwatch:ListMetrics
-          Effect: Allow
-          Resource: "*"
-        # Allow instances to write to cloudwatch logs
-        - Action: ["logs:PutLogEvents", "logs:CreateLogStream", "logs:CreateLogGroup"]
-          Effect: Allow
-          Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
-      Roles:
-      - !Ref ChefRole
-
   ChefBucket:
     Condition: CreateChefSecretsBucket
     Type: AWS::S3::Bucket
@@ -409,6 +347,7 @@ Resources:
     Properties:
       TemplateURL: !Sub https://s3.amazonaws.com/${AutomationBucket}/automate.yaml
       Parameters:
+        ChefName: !Ref ChefName
         AutomationBucket: !Ref AutomationBucket
         VPC: !Ref VPC
         LoadBalancerSubnets: !Join [ ",", !Ref ServerSubnets ]
@@ -429,11 +368,20 @@ Resources:
         LoadBalancerScheme: !Ref LoadBalancerScheme
         LoadBalancerSecurityGroupId: !If [CreateLoadBalancerSecurityGroup, !Ref LoadBalancerSecurityGroup, !Ref LoadBalancerSecurityGroupId]
         FrontendSecurityGroupId: !If [CreateFrontendSecurityGroup, !Ref FrontendSecurityGroup, !Ref FrontendSecurityGroupId]
-        AutomateIamRole: !If [CreateChefIamRole, !Ref ChefRole, !Ref ExistingIamRole]
         AutomateDnsRecordName: !Ref AutomateDnsRecordName
         AMIFlavor: !Ref AMIFlavor
         SystemLogsGroup: !Ref SystemLogs
         AppLogsGroup: !Ref AutomateAppLogs
+        CreateCnameURL: !Ref CreateCnameURL
+        DeleteCnameURL: !Ref DeleteCnameURL
+        CreateAnameURL: !Ref CreateAnameURL
+        DeleteAnameURL: !Ref DeleteAnameURL
+        SamlCert: !Ref AutomateSamlCert
+        SamlURL: !Ref AutomateSamlURL
+        SamlUsernameAttr: !Ref AutomateSamlUsernameAttr
+        SamlGroupsAttr: !Ref AutomateSamlGroupsAttr
+        SamlEntityID: !Ref AutomateSamlEntityID
+        SamlAdminGroup: !Ref AutomateSamlAdminGroup
 
 # Chef Server Stack
 #########################################################################################
@@ -442,6 +390,7 @@ Resources:
     Properties:
       TemplateURL: !Sub https://s3.amazonaws.com/${AutomationBucket}/chef_server_ha.yaml
       Parameters:
+        ChefName: !Ref ChefName
         AutomationBucket: !Ref AutomationBucket
         VPC: !Ref VPC
         ChefServerSubnets: !Join [ ",", !Ref ServerSubnets ]
@@ -468,14 +417,20 @@ Resources:
         LoadBalancerSecurityGroupId: !If [CreateLoadBalancerSecurityGroup, !Ref LoadBalancerSecurityGroup, !Ref LoadBalancerSecurityGroupId]
         FrontendSecurityGroupId: !If [CreateFrontendSecurityGroup, !Ref FrontendSecurityGroup, !Ref FrontendSecurityGroupId]
         ChefServerAssociatePublicIpAddress: !Ref AssociatePublicIpAddress
-        ChefServerIamRole: !If [CreateChefIamRole, !Ref ChefRole, !Ref ExistingIamRole]
         ChefSecretsBucket: !If [CreateChefSecretsBucket, !Ref ChefBucket, !Ref ExistingSecretsBucket]
         ChefAutomateServerUrl: !Sub "https://${AutomateStack.Outputs.DNSName}"
         ChefAutomateToken: !Ref ChefAutomateToken
         ChefServerDnsRecordName: !Ref ChefServerDnsRecordName
+        ChefPushJobsDnsRecordName: !Ref ChefPushJobsDnsRecordName
+        SupermarketDnsRecordName: !Ref SupermarketDnsRecordName
         AMIFlavor: !Ref AMIFlavor
         SystemLogsGroup: !Ref SystemLogs
         AppLogsGroup: !Ref ChefAppLogs
+        LdapConfiguration: !Ref ChefServerLdapConfiguration
+        CreateCnameURL: !Ref CreateCnameURL
+        DeleteCnameURL: !Ref DeleteCnameURL
+        CreateAnameURL: !Ref CreateAnameURL
+        DeleteAnameURL: !Ref DeleteAnameURL
 
 # Supermarket Stack
 #########################################################################################
@@ -484,6 +439,7 @@ Resources:
     Properties:
       TemplateURL: !Sub https://s3.amazonaws.com/${AutomationBucket}/supermarket.yaml
       Parameters:
+        ChefName: !Ref ChefName
         AutomationBucket: !Ref AutomationBucket
         VPC: !Ref VPC
         LoadBalancerSubnets: !Join [ ",", !Ref ServerSubnets ]
@@ -504,30 +460,15 @@ Resources:
         LoadBalancerScheme: !Ref LoadBalancerScheme
         LoadBalancerSecurityGroupId: !If [CreateLoadBalancerSecurityGroup, !Ref LoadBalancerSecurityGroup, !Ref LoadBalancerSecurityGroupId]
         FrontendSecurityGroupId: !If [CreateFrontendSecurityGroup, !Ref FrontendSecurityGroup, !Ref FrontendSecurityGroupId]
-        SupermarketIamRole: !If [CreateChefIamRole, !Ref ChefRole, !Ref ExistingIamRole]
         ChefSecretsBucket: !If [CreateChefSecretsBucket, !Ref ChefBucket, !Ref ExistingSecretsBucket]
         ChefStackName: !GetAtt ChefServerStack.Outputs.StackName
         SupermarketDnsRecordName: !Ref SupermarketDnsRecordName
         AMIFlavor: !Ref AMIFlavor
         SystemLogsGroup: !Ref SystemLogs
         AppLogsGroup: !Ref SupermarketAppLogs
+        CreateCnameURL: !Ref CreateCnameURL
+        DeleteCnameURL: !Ref DeleteCnameURL
+        CreateAnameURL: !Ref CreateAnameURL
+        DeleteAnameURL: !Ref DeleteAnameURL
 
-Outputs:
-  AutomateUrl:
-    Description: The URL of the Chef Automate Server
-    Value: !Sub "https://${AutomateStack.Outputs.DNSName}"
-    Export:
-      Name: !Sub "${AWS::StackName}-AutomateURL"
-  ChefServerUrl:
-    Description: The URL of the Chef Automate Server
-    Value: !Sub "https://${ChefServerStack.Outputs.DNSName}"
-    Export:
-      Name: !Sub "${AWS::StackName}-ChefServerURL"
-  SupermarketUrl:
-    Description: The URL of the Chef Automate Server
-    Value: !Sub "https://${SupermarketStack.Outputs.DNSName}"
-    Export:
-      Name: !Sub "${AWS::StackName}-SupermarketURL"
-  AutomateAdminPassword:
-    Description: The password for the Chef Automate admin user
-    Value: !Sub "To retrieve, run: ssh gecloud@${AutomateStack.Outputs.ServerIP} sudo cat /root/automate-credentials.toml"
+Outputs: {}

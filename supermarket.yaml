@@ -2,7 +2,9 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: AWS Native Supermarket (auto-recovering standalone) v4.0.0
 
 Parameters:
-  # Required Parameters
+  ChefName:
+    Description: Supply name for whole Chef infrastructure
+    Type: String
   AutomationBucket:
     Default: 'aws-native-chef-server'
     Type: String
@@ -82,9 +84,6 @@ Parameters:
   FrontendSecurityGroupId:
     Description: Supply a security group for your chef frontends (leave blank to have it created for you). Using the default security group is recommended.
     Type: String
-  SupermarketIamRole:
-    Description: Supply an IAM Role for the Chef Servers (leave blank to have it created for you). NOTE If you supply your own role, you must also provide an S3 Bucket which that role can access
-    Type: String
   ChefSecretsBucket:
     Description: Supply an S3 Bucket name where the Chef secrets are stored
     Type: String
@@ -93,14 +92,10 @@ Parameters:
     Type: String
   ###############################################################################
   # Other Settings
-  Route53HostedZone:
+  SupermarketDnsRecordName:
     Type: String
-    Default: ''
-    Description: Supply a Route 53 Hosted Zone name (eg. mydomain.com.) for auto-creating a DNS record. Must end in a dot. (Leave blank to disable)
-  Route53RecordName:
-    Type: String
-    Default: 'supermarket'
-    Description: Supply a DNS record name that will be prepended to the Route 53 Hosted Zone
+    Default: 'chef'
+    Description: DNS CNAME to use for chef server ALB
   AMIFlavor:
     Description: Choose the AMI Flavor, the High-Perf CentOS image or the stock and paid official RHEL image
     Type: String
@@ -114,6 +109,18 @@ Parameters:
   AppLogsGroup:
     Description: The logical name of the Cloudwatch Logs log group for systemn logs
     Type: String
+  CreateCnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+  DeleteCnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+  CreateAnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
+  DeleteAnameURL:
+    Type: String
+    Description: Supply URL for creating CNAME records
 
 Metadata:
   cfn-lint:
@@ -122,22 +129,14 @@ Metadata:
         - W2507
 
 Conditions:
-  CreateRoute53Record:
-    !Not [!Equals [ !Ref Route53HostedZone, '' ] ]
   RHELAmiFlavor:
     !Equals [ !Ref AMIFlavor, 'rhel' ]
 
 Resources:
-  ChefInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Path: /
-      Roles:
-      - !Ref SupermarketIamRole
-
   ChefALB:
     Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
     Properties:
+      Name: !Sub ${ChefName}-supermarket-alb
       SecurityGroups:
         - !Ref LoadBalancerSecurityGroupId
       Subnets: !Ref LoadBalancerSubnets
@@ -195,7 +194,7 @@ Resources:
           VolumeSize: !Ref DataVolumeSize
           VolumeType: gp2
           DeleteOnTermination: true
-      IamInstanceProfile: !Ref ChefInstanceProfile
+      IamInstanceProfile: !Sub ${ChefName}-profile
       ImageId: !Ref ImageId
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
@@ -214,15 +213,24 @@ Resources:
       UserData:
         "Fn::Base64": !Sub |
           #!/bin/bash -ex
+          # Install epel repo & CFN-INIT
+          yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+          yum install -y https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.amzn1.noarch.rpm
+          export PYTHONPATH=/usr/local/lib/python2.7/site-packages
+          # Setup error handling
           trap '/opt/aws/bin/cfn-signal -e 1 --region ${AWS::Region} --stack ${AWS::StackName} --resource SupermarketServer' ERR
           # Update the system first
           yum upgrade --exclude="kernel*" --exclude="dracut*" -y
+          # install AWS CLI
+          yum install -y awscli
           # Run before script, make sure to install cfn-init if not installed
-          # attempt to fetch the script first as a signed request (private bucket), then unsigned (public bucket)
-          aws s3 cp s3://${AutomationBucket}/files/before.sh /root/before.sh || \
-            curl -s https://${AutomationBucket}.s3.amazonaws.com/files/before.sh -o /root/before.sh || \
+          # attempt to fetch the script first as a signed request (private bucket), then unsigned, then fallback
+          if
+            aws s3 cp s3://${AutomationBucket}/files/before.sh /root/before.sh || \
             curl -s https://aws-native-chef-server.s3.amazonaws.com/files/before.sh -o /root/before.sh
-          bash -ex /root/before.sh
+          then
+            bash -ex /root/before.sh
+          fi
           # Execute AWS::CloudFormation::Init
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource SupermarketServer --region ${AWS::Region}
           /opt/aws/bin/cfn-signal -e 0 --region ${AWS::Region} --stack ${AWS::StackName} --resource SupermarketServer
@@ -246,7 +254,39 @@ Resources:
               perl-Digest-SHA: []
               zip: []
               unzip: []
+              bind-utils: []
+          files:
+            /root/.aws/config:
+              content: !Sub |
+                [default]
+                region = ${AWS::Region}
           commands:
+            01_setup_dns:
+              command: !Sub
+                - |
+                  # Register Chef Server ALB address if it does not exit or is different
+                  cname=$(dig ${SupermarketDnsRecordName} |
+                    awk '/^${SupermarketDnsRecordName}\..*\sIN\s+CNAME\s/ {print $5}')
+                  if [ -z "$cname" ]; then
+                    curl ${CreateCnameURL}/${SupermarketDnsRecordName}/${albName}
+                  elif [ $cname != ${albName}. ]; then
+                    curl ${DeleteCnameURL}/${SupermarketDnsRecordName}
+                    curl ${CreateCnameURL}/${SupermarketDnsRecordName}/${albName}
+                  fi
+                  # Register instance A record
+                  fqdn=$(echo ${SupermarketDnsRecordName}|sed 's/^\([^.]*\)./\1-i./')
+                  existingip=$(dig $fqdn | awk "/^$fqdn\..*\sIN\s+A\s/ "'{print $5}')
+                  if [ -n "$existingip" ]; then
+                    curl ${DeleteAnameURL}?fqdn=$fqdn\&ipaddress=$existingip
+                  fi
+                  curl ${CreateAnameURL}?fqdn=$fqdn\&ipaddress=$(hostname -I)
+                  # Change name of the server
+                  HOSTNAME=$(echo $fqdn | sed 's/\..*$//')
+                  sed -i "/$(hostname)/d" /etc/hosts
+                  echo "$(hostname -I) $HOSTNAME $fqdn" >> /etc/hosts
+                  hostnamectl set-hostname --static $HOSTNAME
+                  echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
+                - { albName: !GetAtt ChefALB.DNSName }
             02_write_supermarket_json:
               command: !Sub
               - |
@@ -264,7 +304,7 @@ Resources:
                   --arg secret $OAUTH2_SECRET \
                   '{"fqdn": "${FQDN}", "chef_server_url": "${ChefUrl}", "chef_oauth2_app_id": $uid, "chef_oauth2_secret": $secret, "chef_oauth2_verify_ssl": "${ChefOAuth2VerifySSL}", "features": "tools, gravatar, collaborator_groups"}' \
                   > /etc/supermarket/supermarket.json
-              - { FQDN: !If [CreateRoute53Record, !Ref SupermarketDNSRecord, !GetAtt ChefALB.DNSName] }
+              - { FQDN: !Ref SupermarketDnsRecordName }
             03_configure_supermarket:
               command: |
                 supermarket-ctl reconfigure
@@ -417,20 +457,6 @@ Resources:
       - Name: InstanceId
         Value: !Ref SupermarketServer
 
-# Route 53 Record
-#########################################################################################
-  SupermarketDNSRecord:
-    Type: AWS::Route53::RecordSet
-    Condition: CreateRoute53Record
-    Properties:
-      HostedZoneName: !Ref Route53HostedZone
-      Comment: !Sub Created by Cloudformation ${AWS::StackName}
-      Name: !Sub ${Route53RecordName}.${Route53HostedZone}
-      Type: CNAME
-      TTL: '900'
-      ResourceRecords:
-      - !GetAtt ChefALB.DNSName
-
 # Monitoring
 #########################################################################################
   CPUAlarmHigh:
@@ -510,6 +536,6 @@ Resources:
 Outputs:
   DNSName:
     Description: The DNS name of the load balancer
-    Value: !If [CreateRoute53Record, !Sub "${Route53RecordName}.${Route53HostedZone}", !GetAtt ChefALB.DNSName]
+    Value: !Ref SupermarketDnsRecordName
     Export:
       Name: !Sub "${AWS::StackName}-DNSName"
