@@ -213,18 +213,6 @@ Parameters:
   AppLogsGroup:
     Description: The logical name of the Cloudwatch Logs log group for systemn logs
     Type: String
-  CreateCnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
-  DeleteCnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
-  CreateAnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
-  DeleteAnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
 
 Metadata:
   cfn-lint:
@@ -455,35 +443,39 @@ Resources:
       - !Ref FrontendSecurityGroupId
       - !Ref InboundAdminSecurityGroupId
       UserData:
-        "Fn::Base64": !Sub |
+        "Fn::Base64": !Sub
+        - |
           #!/bin/bash -ex
-          # Install epel repo & CFN-INIT
-          yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-          yum install -y https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.amzn1.noarch.rpm
-          export PYTHONPATH=/usr/local/lib/python2.7/site-packages
+          # Run before script, make sure to install aws & cfn-init if not installed
+          # attempt to fetch the script first as a signed request (private bucket), then unsigned, then fallback
+          if
+            curl -sf https://${AutomationBucket}.s3.amazonaws.com/files/before.sh -o /root/before.sh || \
+            curl -sf https://aws-native-chef-server.s3.amazonaws.com/files/before.sh -o /root/before.sh
+          then
+            STACKNAME=${AWS::StackName} \
+            BUCKET=${AutomationBucket} \
+            CHEFNAME=${ChefName} \
+            REGION=${AWS::Region} \
+            DNSSETUP="${ChefServerDnsRecordName}:${ServerALBName} ${ChefPushJobsDnsRecordName}:${PushELBName}" \
+            bash -ex /root/before.sh
+          fi
           trap "{
             /opt/aws/bin/cfn-signal -e 1 --region ${AWS::Region} --stack ${AWS::StackName} --resource ServerLaunchConfig
             # Uncomment this next line before going to production
             aws autoscaling set-instance-health --health-status Unhealthy --region ${AWS::Region} --instance-id $(curl -s http://169.254.169.254/latest/meta-data/instance-id)
           }" ERR
           # Update the system first
-          yum upgrade --exclude="kernel*" --exclude="dracut*" -y
-          # install AWS CLI
-          yum install -y awscli
-          # attempt to fetch the script first as a signed request (private bucket)
-          if
-            aws s3 cp s3://${AutomationBucket}/files/after.sh /root/before.sh
-          then
-            bash -ex /root/before.sh
-          fi
+          # yum upgrade --exclude="kernel*" --exclude="dracut*" -y
+          yum upgrade -y
           # Execute AWS::CloudFormation::Init
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource ServerLaunchConfig --region ${AWS::Region}
           # All is well so signal success and let CF know wait function is complete
           /opt/aws/bin/cfn-signal -e 0 -r "Server setup complete" '${WaitHandle}'
+        - { ServerALBName: !GetAtt ChefALB.DNSName, PushELBName: !GetAtt ChefPJELB.DNSName }
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
-          default: [awslogs, es_proxy_setup, chef_server_setup, filebeat, chef_client_bootstrap]
+          default: [awslogs, es_proxy_setup, chef_server_setup, filebeat]
         es_proxy_setup:
           files:
             /usr/local/bin/aws-signing-proxy:
@@ -518,7 +510,6 @@ Resources:
               chef-server-core: !Sub ${ChefServerPackage}
               chef-manage: !Sub ${ChefManagePackage}
               opscode-push-jobs-server: !Sub ${PushJobsPackage}
-              opscode-reporting: !Sub ${ReportingPackage}
             yum:
               perl: []
               perl-DateTime: []
@@ -527,7 +518,6 @@ Resources:
               perl-Digest-SHA: []
               zip: []
               unzip: []
-              bind-utils: []
           files:
             /etc/opscode-push-jobs-server/opscode-push-jobs-server.rb:
               content: !Sub |
@@ -581,12 +571,12 @@ Resources:
                   'redirect_uri' => 'https://${SupermarketDnsRecordName}/auth/chef_oauth2/callback'
                 }
                 default_orgname '${ChefDefaultOrgName}'.empty? ? null : '${ChefDefaultOrgName}'
-                data_collector['root_url'] = '${ChefAutomateServerUrl}'
+                #disable# data_collector['root_url'] = '${ChefAutomateServerUrl}/data-collector/v0/'
                 data_collector['token'] = '${ChefAutomateToken}'
                 # Add for chef client run forwarding
-                data_collector['proxy']= true
+                #disable# data_collector['proxy']= true
                 # Add for compliance scanning
-                profiles['root_url'] = '${ChefAutomateServerUrl}'
+                #disable# profiles['root_url'] = '${ChefAutomateServerUrl}'
                 ${LdapConfiguration}
             /etc/sysctl.d/00-chef.conf:
               content: |
@@ -605,51 +595,11 @@ Resources:
               content: !Sub |
                 [default]
                 region = ${AWS::Region}
+            /root/.forward:
+              mode: '000644'
+              content: !Sub |
+                ${ContactEmail}
           commands:
-            01_setup_dns:
-              command: !Sub
-                - |
-                  # Register Chef Server ALB address if it does not exit or is different
-                  cname=$(dig ${ChefServerDnsRecordName} |
-                    awk '/^${ChefServerDnsRecordName}\..*\sIN\s+CNAME\s/ {print $5}')
-                  if [ -z "$cname" ]; then
-                    curl -s ${CreateCnameURL}/${ChefServerDnsRecordName}/${ServerALBName}
-                  elif [ $cname != ${ServerALBName}. ]; then
-                    curl -s ${DeleteCnameURL}/${ChefServerDnsRecordName}
-                    curl -s ${CreateCnameURL}/${ChefServerDnsRecordName}/${ServerALBName}
-                  fi
-                  # Register Chef Pushjobs ELB address if it does not exit or is different
-                  cname=$(dig ${ChefPushJobsDnsRecordName} |
-                    awk '/^${ChefPushJobsDnsRecordName}\..*\sIN\s+CNAME\s/ {print $5}')
-                  if [ -z "$cname" ]; then
-                    curl -s ${CreateCnameURL}/${ChefPushJobsDnsRecordName}/${PushELBName}
-                  elif [ $cname != ${PushELBName}. ]; then
-                    curl -s ${DeleteCnameURL}/${ChefPushJobsDnsRecordName}
-                    curl -s ${CreateCnameURL}/${ChefPushJobsDnsRecordName}/${PushELBName}
-                  fi
-                  # Register instance A record
-                  iid=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-                  if
-                    aws autoscaling describe-auto-scaling-instances --instance-ids=$iid |
-                    grep BootstrapAutoScaleGroup
-                  then # This is bootstrap instance (should be only one)
-                    i="i"
-                  else # This is general frontend instance (can't assign number, make it unique)
-                    i=$iid
-                  fi
-                  fqdn=$(echo ${ChefServerDnsRecordName}|sed "s/^\([^.]*\)./\1-$i./")
-                  existingip=$(dig $fqdn | awk "/^$fqdn\..*\sIN\s+A\s/ "'{print $5}')
-                  if [ -n "$existingip" ]; then
-                    curl -s ${DeleteAnameURL}?fqdn=$fqdn\&ipaddress=$existingip
-                  fi
-                  curl -s ${CreateAnameURL}?fqdn=$fqdn\&ipaddress=$(hostname -I)
-                  # Change name of the server
-                  HOSTNAME=$(echo $fqdn | sed 's/\..*$//')
-                  sed -i "/$(hostname)/d" /etc/hosts
-                  echo "$(hostname -I) $HOSTNAME $fqdn" >> /etc/hosts
-                  hostnamectl set-hostname --static $HOSTNAME
-                  echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
-                - { ServerALBName: !GetAtt ChefALB.DNSName, PushELBName: !GetAtt ChefPJELB.DNSName }
             02_before_script:
               command: !Sub |
                 sysctl -p /etc/sysctl.d/00-chef.conf
@@ -674,6 +624,9 @@ Resources:
                 if
                   aws s3 cp s3://${AutomationBucket}/files/after.sh /root/after.sh
                 then
+                  STACKNAME=${AWS::StackName} \
+                  CHEFNAME=${ChefName} \
+                  BUCKET=${AutomationBucket} \
                   bash -ex /root/after.sh
                 fi
             05_configure_cloudwatch_monitoring:
@@ -822,54 +775,6 @@ Resources:
           commands:
             01_systemd:
               command: systemctl daemon-reload && systemctl start filebeat.service
-        chef_client_bootstrap:
-          files:
-            /etc/chef/bootstrap-chef_client.sh:
-              content: !Sub |
-                #!/bin/bash
-
-                if
-                  ! aws s3 ls ${ChefSecretsBucket}/chef-client
-                then
-                  echo No chef-client setup configuration
-                  exit 0
-                fi
-
-                if
-                  ! aws s3 sync s3://${ChefSecretsBucket}/chef-client/ /etc/chef/
-                then
-                  echo Cannot retrieve chef-client configuration
-                  exit -1
-                fi
-
-                chmod 0700 /etc/chef
-                if
-                  ! [ -r /etc/chef/setup.sh ]
-                then
-                  echo No chef-client setup.sh
-                  exit 0
-                fi
-
-                if
-                  /bin/bash /etc/chef/setup.sh
-                then
-                  crontab -l | grep -v /etc/chef/bootstrap-chef_client.sh | crontab
-                  rm /etc/chef/setup.sh /etc/chef/bootstrap-chef_client.sh
-                  echo chef-client successfuly bootstraped
-                  exit 0
-                fi
-
-                echo chef-client bootstrap failed
-                exit -1
-              mode: '000755'
-              owner: root
-              group: root
-          commands:
-            01_set_crontab_and_run:
-              command: |
-                RUN_AT=$(( ($(date +"%M") + 30) % 60 ))
-                { crontab -l; echo "$RUN_AT * * * * /etc/chef/bootstrap-chef_client.sh"; } | crontab
-                /etc/chef/bootstrap-chef_client.sh
 
   WaitCondition:
     Type: AWS::CloudFormation::WaitCondition

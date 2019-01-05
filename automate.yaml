@@ -237,13 +237,15 @@ Resources:
             STACKNAME=${AWS::StackName} \
             BUCKET=${AutomationBucket} \
             CHEFNAME=${ChefName} \
+            REGION=${AWS::Region} \
             DNSSETUP="${AutomateDnsRecordName}:${albName}" \
             bash -ex /root/before.sh
           fi
           # Setup error handling
           trap '/opt/aws/bin/cfn-signal -e 1 --region ${AWS::Region} --stack ${AWS::StackName} --resource AutomateServer' ERR
           # Update the system first
-          yum upgrade --exclude="kernel*" --exclude="dracut*" -y
+          # yum upgrade --exclude="kernel*" --exclude="dracut*" -y
+          yum upgrade -y
           # Execute AWS::CloudFormation::Init
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource AutomateServer --region ${AWS::Region}
           /opt/aws/bin/cfn-signal -e 0 --region ${AWS::Region} --stack ${AWS::StackName} --resource AutomateServer
@@ -251,7 +253,7 @@ Resources:
     CreationPolicy:
       ResourceSignal:
         Count: 1
-        Timeout: PT20M
+        Timeout: PT60M
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
@@ -396,6 +398,10 @@ Resources:
               content: !Sub |
                 [default]
                 region = ${AWS::Region}
+            /root/.forward:
+              mode: '000644'
+              content: !Sub |
+                ${ContactEmail}
           commands:
             02_before_script:
               command: |
@@ -419,6 +425,7 @@ Resources:
                 then
                   STACKNAME=${AWS::StackName} \
                   CHEFNAME=${ChefName} \
+                  BUCKET=${AutomationBucket} \
                   AUTOMATENAME="${AutomateDnsRecordName}" \
                   bash -ex /root/after.sh
                 fi

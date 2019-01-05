@@ -109,18 +109,6 @@ Parameters:
   AppLogsGroup:
     Description: The logical name of the Cloudwatch Logs log group for systemn logs
     Type: String
-  CreateCnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
-  DeleteCnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
-  CreateAnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
-  DeleteAnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
 
 Metadata:
   cfn-lint:
@@ -211,33 +199,35 @@ Resources:
       - Key: X-Contact
         Value: !Ref ContactEmail
       UserData:
-        "Fn::Base64": !Sub |
+        "Fn::Base64": !Sub
+        - |
           #!/bin/bash -ex
-          # Install epel repo & CFN-INIT
-          yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-          yum install -y https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.amzn1.noarch.rpm
-          export PYTHONPATH=/usr/local/lib/python2.7/site-packages
+          # Run before script, make sure to install aws & cfn-init if not installed
+          # attempt to fetch the script first as a signed request (private bucket), then unsigned, then fallback
+          if
+            curl -sf https://${AutomationBucket}.s3.amazonaws.com/files/before.sh -o /root/before.sh || \
+            curl -sf https://aws-native-chef-server.s3.amazonaws.com/files/before.sh -o /root/before.sh
+          then
+            STACKNAME=${AWS::StackName} \
+            BUCKET=${AutomationBucket} \
+            CHEFNAME=${ChefName} \
+            REGION=${AWS::Region} \
+            DNSSETUP="${SupermarketDnsRecordName}:${albName}" \
+            bash -ex /root/before.sh
+          fi
           # Setup error handling
           trap '/opt/aws/bin/cfn-signal -e 1 --region ${AWS::Region} --stack ${AWS::StackName} --resource SupermarketServer' ERR
           # Update the system first
-          yum upgrade --exclude="kernel*" --exclude="dracut*" -y
-          # install AWS CLI
-          yum install -y awscli
-          # Run before script, make sure to install cfn-init if not installed
-          # attempt to fetch the script first as a signed request (private bucket), then unsigned, then fallback
-          if
-            aws s3 cp s3://${AutomationBucket}/files/before.sh /root/before.sh || \
-            curl -s https://aws-native-chef-server.s3.amazonaws.com/files/before.sh -o /root/before.sh
-          then
-            bash -ex /root/before.sh
-          fi
+          # yum upgrade --exclude="kernel*" --exclude="dracut*" -y
+          yum upgrade -y
           # Execute AWS::CloudFormation::Init
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource SupermarketServer --region ${AWS::Region}
           /opt/aws/bin/cfn-signal -e 0 --region ${AWS::Region} --stack ${AWS::StackName} --resource SupermarketServer
+        - { albName: !GetAtt ChefALB.DNSName }
     CreationPolicy:
       ResourceSignal:
         Count: 1
-        Timeout: PT10M
+        Timeout: PT60M
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
@@ -254,39 +244,16 @@ Resources:
               perl-Digest-SHA: []
               zip: []
               unzip: []
-              bind-utils: []
           files:
             /root/.aws/config:
               content: !Sub |
                 [default]
                 region = ${AWS::Region}
+            /root/.forward:
+              mode: '000644'
+              content: !Sub |
+                ${ContactEmail}
           commands:
-            01_setup_dns:
-              command: !Sub
-                - |
-                  # Register Chef Server ALB address if it does not exit or is different
-                  cname=$(dig ${SupermarketDnsRecordName} |
-                    awk '/^${SupermarketDnsRecordName}\..*\sIN\s+CNAME\s/ {print $5}')
-                  if [ -z "$cname" ]; then
-                    curl ${CreateCnameURL}/${SupermarketDnsRecordName}/${albName}
-                  elif [ $cname != ${albName}. ]; then
-                    curl ${DeleteCnameURL}/${SupermarketDnsRecordName}
-                    curl ${CreateCnameURL}/${SupermarketDnsRecordName}/${albName}
-                  fi
-                  # Register instance A record
-                  fqdn=$(echo ${SupermarketDnsRecordName}|sed 's/^\([^.]*\)./\1-i./')
-                  existingip=$(dig $fqdn | awk "/^$fqdn\..*\sIN\s+A\s/ "'{print $5}')
-                  if [ -n "$existingip" ]; then
-                    curl ${DeleteAnameURL}?fqdn=$fqdn\&ipaddress=$existingip
-                  fi
-                  curl ${CreateAnameURL}?fqdn=$fqdn\&ipaddress=$(hostname -I)
-                  # Change name of the server
-                  HOSTNAME=$(echo $fqdn | sed 's/\..*$//')
-                  sed -i "/$(hostname)/d" /etc/hosts
-                  echo "$(hostname -I) $HOSTNAME $fqdn" >> /etc/hosts
-                  hostnamectl set-hostname --static $HOSTNAME
-                  echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
-                - { albName: !GetAtt ChefALB.DNSName }
             02_write_supermarket_json:
               command: !Sub
               - |
@@ -310,10 +277,15 @@ Resources:
                 supermarket-ctl reconfigure
             04_after_script:
               command: !Sub |
-                # attempt to fetch the script first as a signed request (private bucket), then unsigned (public bucket)
-                aws s3 cp s3://${AutomationBucket}/files/after.sh /root/after.sh || \
-                  curl -s https://${AutomationBucket}.s3.amazonaws.com/files/after.sh -o /root/after.sh
-                bash -ex /root/after.sh
+                # attempt to fetch the script and if it exists execute it.
+                if
+                  aws s3 cp s3://${AutomationBucket}/files/after.sh /root/after.sh
+                then
+                  STACKNAME=${AWS::StackName} \
+                  CHEFNAME=${ChefName} \
+                  BUCKET=${AutomationBucket} \
+                  bash -ex /root/after.sh
+                fi
             05_configure_cloudwatch_monitoring:
               command: |
                 mkdir /opt/cloudwatch_monitoring

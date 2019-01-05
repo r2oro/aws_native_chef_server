@@ -198,6 +198,14 @@ Parameters:
     Type: String
     Default: 93a49a4f2482c64126f7b6015e6b0f30284287ee4054ff8807fb63d9cbd1c506
     NoEcho: True
+  AutomateLicenseKey:
+    Type: String
+    Default: ''
+    Description: License key for Automate 2.0
+  ChefServerLicenseCount:
+    Default: '25'
+    Description: Enter how many licenses you have purchased
+    Type: String
   AMIFlavor:
     Description: Choose the AMI Flavor, the High-Perf CentOS image or the stock and paid official RHEL image
     Type: String
@@ -210,18 +218,6 @@ Parameters:
     Type: Number
     Default: 90
     AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
-  CreateCnameURL:
-    Description: URL of API endpoint for CNAME creation
-    Type: String
-  DeleteCnameURL:
-    Description: URL of API endpoint for CNAME deletion
-    Type: String
-  CreateAnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
-  DeleteAnameURL:
-    Type: String
-    Description: Supply URL for creating CNAME records
 
 Metadata:
   cfn-lint:
@@ -372,16 +368,13 @@ Resources:
         AMIFlavor: !Ref AMIFlavor
         SystemLogsGroup: !Ref SystemLogs
         AppLogsGroup: !Ref AutomateAppLogs
-        CreateCnameURL: !Ref CreateCnameURL
-        DeleteCnameURL: !Ref DeleteCnameURL
-        CreateAnameURL: !Ref CreateAnameURL
-        DeleteAnameURL: !Ref DeleteAnameURL
         SamlCert: !Ref AutomateSamlCert
         SamlURL: !Ref AutomateSamlURL
         SamlUsernameAttr: !Ref AutomateSamlUsernameAttr
         SamlGroupsAttr: !Ref AutomateSamlGroupsAttr
         SamlEntityID: !Ref AutomateSamlEntityID
         SamlAdminGroup: !Ref AutomateSamlAdminGroup
+        AutomateLicenseKey: !Ref AutomateLicenseKey
 
 # Chef Server Stack
 #########################################################################################
@@ -426,11 +419,8 @@ Resources:
         AMIFlavor: !Ref AMIFlavor
         SystemLogsGroup: !Ref SystemLogs
         AppLogsGroup: !Ref ChefAppLogs
+        LicenseCount: !Ref ChefServerLicenseCount
         LdapConfiguration: !Ref ChefServerLdapConfiguration
-        CreateCnameURL: !Ref CreateCnameURL
-        DeleteCnameURL: !Ref DeleteCnameURL
-        CreateAnameURL: !Ref CreateAnameURL
-        DeleteAnameURL: !Ref DeleteAnameURL
 
 # Supermarket Stack
 #########################################################################################
@@ -443,7 +433,7 @@ Resources:
         AutomationBucket: !Ref AutomationBucket
         VPC: !Ref VPC
         LoadBalancerSubnets: !Join [ ",", !Ref ServerSubnets ]
-        SupermarketSubnet: !Select [ "0", !Ref ServerSubnets ]
+        SupermarketSubnet: !Select [ "1", !Ref ServerSubnets ]
         SSLCertificateARN: !Ref SupermarketSSLCertificateARN
         InboundAdminSecurityGroupId: !Ref InboundAdminSecurityGroupId
         ImageId: !If
@@ -466,9 +456,5 @@ Resources:
         AMIFlavor: !Ref AMIFlavor
         SystemLogsGroup: !Ref SystemLogs
         AppLogsGroup: !Ref SupermarketAppLogs
-        CreateCnameURL: !Ref CreateCnameURL
-        DeleteCnameURL: !Ref DeleteCnameURL
-        CreateAnameURL: !Ref CreateAnameURL
-        DeleteAnameURL: !Ref DeleteAnameURL
 
 Outputs: {}
