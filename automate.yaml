@@ -270,6 +270,7 @@ Resources:
               perl-Digest-SHA: []
               zip: []
               unzip: []
+              wget: []
           files:
             /root/chef-automate.zip:
               source: https://packages.chef.io/files/current/automate/latest/chef-automate_linux_amd64.zip
@@ -446,7 +447,7 @@ Resources:
           commands:
             create_nightly_backup_cronjob:
               command: |
-                crontab -l | { cat; echo "55 23 * * * root /usr/local/bin/ebs-snapshot.sh"; } | crontab -
+                crontab -l | { cat; echo "55 23 * * * /usr/local/bin/ebs-snapshot.sh"; } | crontab -
         awslogs:
           files:
             /root/awslogs-agent-setup.py:
