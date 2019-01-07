@@ -571,12 +571,12 @@ Resources:
                   'redirect_uri' => 'https://${SupermarketDnsRecordName}/auth/chef_oauth2/callback'
                 }
                 default_orgname '${ChefDefaultOrgName}'.empty? ? null : '${ChefDefaultOrgName}'
-                #disable# data_collector['root_url'] = '${ChefAutomateServerUrl}/data-collector/v0/'
+                data_collector['root_url'] = '${ChefAutomateServerUrl}/data-collector/v0/'
                 data_collector['token'] = '${ChefAutomateToken}'
                 # Add for chef client run forwarding
-                #disable# data_collector['proxy']= true
+                data_collector['proxy']= true
                 # Add for compliance scanning
-                #disable# profiles['root_url'] = '${ChefAutomateServerUrl}'
+                profiles['root_url'] = '${ChefAutomateServerUrl}'
                 ${LdapConfiguration}
             /etc/sysctl.d/00-chef.conf:
               content: |
