@@ -518,6 +518,7 @@ Resources:
               perl-Digest-SHA: []
               zip: []
               unzip: []
+              bind-utils: []
           files:
             /etc/opscode-push-jobs-server/opscode-push-jobs-server.rb:
               content: !Sub |
@@ -599,6 +600,27 @@ Resources:
               mode: '000644'
               content: !Sub |
                 ${ContactEmail}
+            /usr/local/bin/automate_ip_watchdog.sh:
+              mode: '000755'
+              content: !Sub |
+                #!/usr/bin/env bash
+                #
+                # Remediation for nginx DNS blindness
+                #
+                # Monitor Automate DNS record and if changes, SIGHUP nginx to force
+                # new address to be properly resolved (requires host command from bind-utils)
+                #
+                Automate_URL=${ChefAutomateServerUrl}
+                Automate_DNS_Name=$(echo $Automate_URL | awk -F '[/:]' '{print $4}')
+                Saved_DNS_Lookup=/var/opt/opscode/automate_dns
+                host $Automate_DNS_Name | sort > $Saved_DNS_Lookup.current
+                if
+                  ! diff $Saved_DNS_Lookup $Saved_DNS_Lookup.current > /dev/null 2>&1
+                then
+                  nginx_pid=$(chef-server-ctl status nginx | awk -F '[ ()]' '/^run: nginx:/ {print $5}')
+                  [ -z "$nginx_pid" ] || kill -HUP $nginx_pid
+                  mv $Saved_DNS_Lookup.current $Automate_DNS_Name
+                fi
           commands:
             02_before_script:
               command: !Sub |
@@ -637,6 +659,15 @@ Resources:
                 unzip CloudWatchMonitoringScripts-1.2.1.zip
                 rm -f CloudWatchMonitoringScripts-1.2.1.zip
                 crontab -l | { cat; echo "*/5 * * * * /opt/cloudwatch_monitoring/aws-scripts-mon/mon-put-instance-data.pl --auto-scaling --mem-util --disk-space-util --disk-path=/ --from-cron"; } | crontab -
+            06_configure_automate_ip_watchdog:
+              command: !Sub |
+                # create initial DNS statefile
+                Automate_URL=${ChefAutomateServerUrl}
+                Automate_DNS_Name=$(echo $Automate_URL | awk -F '[/:]' '{print $4}')
+                Saved_DNS_Lookup=/var/opt/opscode/automate_dns
+                host $Automate_DNS_Name | sort > $Saved_DNS_Lookup
+                # schedule watchdog
+                crontab -l | { cat; echo "* * * * * /usr/local/bin/automate_ip_watchdog.sh"; } | crontab -
         awslogs:
           files:
             /root/awslogs-agent-setup.py:
