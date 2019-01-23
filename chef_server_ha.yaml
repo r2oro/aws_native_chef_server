@@ -619,7 +619,7 @@ Resources:
                 then
                   nginx_pid=$(chef-server-ctl status nginx | awk -F '[ ()]' '/^run: nginx:/ {print $5}')
                   [ -z "$nginx_pid" ] || kill -HUP $nginx_pid
-                  mv $Saved_DNS_Lookup.current $Automate_DNS_Name
+                  mv $Saved_DNS_Lookup.current $Saved_DNS_Lookup
                 fi
           commands:
             02_before_script:
