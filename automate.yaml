@@ -425,6 +425,7 @@ Resources:
                   aws s3 cp s3://${AutomationBucket}/files/after.sh /root/after.sh
                 then
                   STACKNAME=${AWS::StackName} \
+                  REGION=${AWS::Region} \
                   CHEFNAME=${ChefName} \
                   BUCKET=${AutomationBucket} \
                   AUTOMATENAME="${AutomateDnsRecordName}" \
