@@ -1,6 +1,6 @@
 #!/bin/bash -x
 
-# Provided variables that are required: STACKNAME, BUCKET, AWS_REGION
+# Provided variables that are required: STACKNAME, BUCKET, AWS_REGION, WAITHANDLE
 test -n "${STACKNAME}" || exit 1
 test -n "${BUCKET}" || exit 1
 test -n "${AWS_REGION}" || exit 1
