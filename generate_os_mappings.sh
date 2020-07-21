@@ -8,20 +8,20 @@
 # CENTOS_RELEASE='chef-highperf-centos7-201808171554'
 
 # Query GESOS Enterprise Cloud Build AMIs
-RHEL_RELEASE='GESOS-Cloud-RHEL7'
-CENTOS_RELEASE='GESOS-Cloud-CentOS7'
+RHEL_RELEASE='GESOS-AWS-BASE_RHEL'
+CENTOS_RELEASE='GESOS-AWS-BASE_CENTOS7'
 
 printf "Mappings:\n  AMI:\n"
 
 regions=$(aws ec2 describe-regions --query "Regions[].RegionName" --output text)
 for region in $regions; do
   rhel_ami=$(aws --region $region ec2 describe-images \
-  --owners 277688789493 \
+  --owners 504948279284 \
   --filters "Name=name,Values=${RHEL_RELEASE}*" \
   --query "Images[*].[CreationDate,Name,ImageId]" --output "text" | sort -r | head -1 | awk '{print $3}')
 
   centos_ami=$(aws --region $region ec2 describe-images \
-  --owners 277688789493 \
+  --owners 504948279284 \
   --filters "Name=name,Values=${CENTOS_RELEASE}*" \
   --query "Images[*].[CreationDate,Name,ImageId]" --output "text" | sort -r | head -1 | awk '{print $3}')
 

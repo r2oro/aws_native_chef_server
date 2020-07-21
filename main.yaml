@@ -238,15 +238,9 @@ Conditions:
 # Periodically regenerate this list using the 'generate_os_mappings.sh' script
 Mappings:
   AMI:
-    eu-west-1:
-      rhel: ami-7aa39f03
-      centos: ami-87dbe7fe
-    eu-central-1:
-      rhel: ami-20674fcb
-      centos: ami-1f7850f4
     us-east-1:
-      rhel: ami-4acd5d35
-      centos: ami-dcc050a3
+      rhel: ami-0263422c8f3a06276
+      centos: ami-02d6cb18eee337b0e
 
 Resources:
   ChefBucket:
