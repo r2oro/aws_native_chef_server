@@ -403,12 +403,6 @@ Resources:
         SamlEntityID: !Ref AutomateSamlEntityID
         SamlAdminGroup: !Ref AutomateSamlAdminGroup
         AutomateLicenseKey: !Ref AutomateLicenseKey
-        ChefServerPackage: !Ref ChefServerPackage
-        ChefManagePackage: !Ref ChefManagePackage
-        PushJobsPackage: !Ref PushJobsPackage
-        ReportingPackage: !Ref ReportingPackage
-        FilebeatPackage: !Ref FilebeatPackage
-        SigningProxy: !Ref SigningProxy
 
 # Chef Server Stack
 #########################################################################################
@@ -455,6 +449,12 @@ Resources:
         AppLogsGroup: !Ref ChefAppLogs
         LicenseCount: !Ref ChefServerLicenseCount
         LdapConfiguration: !Ref ChefServerLdapConfiguration
+        ChefServerPackage: !Ref ChefServerPackage
+        ChefManagePackage: !Ref ChefManagePackage
+        PushJobsPackage: !Ref PushJobsPackage
+        ReportingPackage: !Ref ReportingPackage
+        FilebeatPackage: !Ref FilebeatPackage
+        SigningProxy: !Ref SigningProxy
 
 # Supermarket Stack
 #########################################################################################
