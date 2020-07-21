@@ -107,27 +107,33 @@ Parameters:
   ChefServerPackage:
     Description: The URL to the chef server EL7 (chef-server-core) package which will be downloaded
     Type: String
-    Default: 'https://packages.chef.io/files/stable/chef-server/12.17.33/el/7/chef-server-core-12.17.33-1.el7.x86_64.rpm'
+    Default: 'https://gehc-chef.s3.amazonaws.com/pkgs/chef-server-core-12.17.33-1.el7.x86_64.rpm'
+    # Default: 'https://packages.chef.io/files/stable/chef-server/12.17.33/el/7/chef-server-core-12.17.33-1.el7.x86_64.rpm'
   ChefManagePackage:
     Description: The URL to the chef-manage EL7 package which will be downloaded
     Type: String
-    Default: 'https://packages.chef.io/files/stable/chef-manage/2.5.16/el/7/chef-manage-2.5.16-1.el7.x86_64.rpm'
+    Default: 'https://gehc-chef.s3.amazonaws.com/pkgs/chef-manage-2.5.16-1.el7.x86_64.rpm'
+    # Default: 'https://packages.chef.io/files/stable/chef-manage/2.5.16/el/7/chef-manage-2.5.16-1.el7.x86_64.rpm'
   PushJobsPackage:
     Description: The URL to the push jobs server package which will be downloaded
     Type: String
-    Default: 'https://packages.chef.io/files/stable/opscode-push-jobs-server/2.2.8/el/7/opscode-push-jobs-server-2.2.8-1.el7.x86_64.rpm'
+    Default: 'https://gehc-chef.s3.amazonaws.com/pkgs/opscode-push-jobs-server-2.2.8-1.el7.x86_64.rpm'
+    # Default: 'https://packages.chef.io/files/stable/opscode-push-jobs-server/2.2.8/el/7/opscode-push-jobs-server-2.2.8-1.el7.x86_64.rpm'
   ReportingPackage:
     Description: The URL to the reporting package which will be downloaded
     Type: String
-    Default: 'https://packages.chef.io/files/stable/opscode-reporting/1.8.0/el/7/opscode-reporting-1.8.0-1.el7.x86_64.rpm'
+    Default: 'https://gehc-chef.s3.amazonaws.com/pkgs/opscode-reporting-1.8.0-1.el7.x86_64.rpm'
+    # Default: 'https://packages.chef.io/files/stable/opscode-reporting/1.8.0/el/7/opscode-reporting-1.8.0-1.el7.x86_64.rpm'
   FilebeatPackage:
     Description: Filebeat rpm URL
     Type: String
-    Default: 'https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-5.6.6-x86_64.rpm'
+    Default: 'https://gehc-chef.s3.amazonaws.com/pkgs/filebeat-5.6.6-x86_64.rpm'
+    # Default: 'https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-5.6.6-x86_64.rpm'
   SigningProxy:
     Description: SigningProxy binary location
     Type: String
-    Default: 'https://github.com/chef-customers/aws-signing-proxy/releases/download/v0.3.0/aws-signing-proxy'
+    Default: 'https://gehc-chef.s3.amazonaws.com/pkgs/aws-signing-proxy'
+    # Default: 'https://github.com/chef-customers/aws-signing-proxy/releases/download/v0.3.0/aws-signing-proxy'
   # BeforeScriptLocation:
   #   Description: The S3 location of the script which runs before the Main script (optional)
   #   Type: String
