@@ -578,10 +578,12 @@ Resources:
                   'redirect_uri' => 'https://${SupermarketDnsRecordName}/auth/chef_oauth2/callback'
                 }
                 default_orgname '${ChefDefaultOrgName}'.empty? ? null : '${ChefDefaultOrgName}'
-                data_collector['root_url'] = '${ChefAutomateServerUrl}/data-collector/v0/'
-                data_collector['token'] = '${ChefAutomateToken}'
+                # TODO: Uncomment below following 2 lines after making Automate usable again
+                #data_collector['root_url'] = 'https://chef-automate.cloud.health.ge.com/data-collector/v0/'
+                #data_collector['token'] = 'gSkHK4qoAZdu2glDfytTiaTv6jk='
                 # Add for chef client run forwarding
-                data_collector['proxy']= true
+                # TODO: Change below to true after making Automate usable again
+                data_collector['proxy']= false
                 # Add for compliance scanning
                 profiles['root_url'] = '${ChefAutomateServerUrl}'
                 ${LdapConfiguration}
