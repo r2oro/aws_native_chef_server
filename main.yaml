@@ -121,7 +121,7 @@ Parameters:
   ChefElasticSearchInstanceType:
     Description: The Instance type to use for ElasticSearch instances (Note, must have ephemeral storage, the instance type affects the total amount of elasticsearch storage. i3 strongly recommended)
     Type: String
-    Default: 'i3.large.elasticsearch'
+    Default: 'i3.xlarge.elasticsearch'
     AllowedValues: [
       'i3.large.elasticsearch', 'i3.xlarge.elasticsearch', 'i3.2xlarge.elasticsearch', 'i3.4xlarge.elasticsearch', 'i3.8xlarge.elasticsearch', 'i3.16xlarge.elasticsearch',
       'i2.xlarge.elasticsearch', 'i2.2xlarge.elasticsearch',
@@ -137,7 +137,7 @@ Parameters:
     - '5.5'
   ChefElasticSearchShardCount:
     Description: Number of ElasticSearch hosts to provision at launch (3 recommended)
-    Default: 3
+    Default: 4
     Type: Number
   ChefElasticSearchReplicaCount:
     Description: Replication factor for ElasticSearch sha vrds (how many extra copies to keep)
