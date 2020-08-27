@@ -274,7 +274,7 @@ Mappings:
   AMI:
     us-east-1:
       rhel: ami-0263422c8f3a06276
-      centos: ami-02d6cb18eee337b0e
+      centos: ami-0ad03c2ec0a6e2809
 
 Resources:
   ChefBucket:
