@@ -238,7 +238,7 @@ Resources:
     Type: AWS::AutoScaling::AutoScalingGroup
     DependsOn:
       - PostgreSQLStack
-      - ElasticsearchStack
+      - ElasticsearchStack02
     Properties:
       LaunchConfigurationName: !Ref ServerLaunchConfig
       TargetGroupARNs:
@@ -503,7 +503,7 @@ Resources:
               content: !Sub |
                 listen-address: 127.0.0.1
                 port: 9200
-                target: https://${ElasticsearchStack.Outputs.DomainEndpoint}
+                target: https://${ElasticsearchStack02.Outputs.DomainEndpoint}
                 region: ${AWS::Region}
                 no-file-log: false
                 stdout-log: true
@@ -844,7 +844,7 @@ Resources:
 
 # ElasticSearch
 #########################################################################################
-  ElasticsearchStack:
+  ElasticsearchStack02:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub https://s3.amazonaws.com/${AutomationBucket}/chef_elasticsearch.yaml
@@ -869,7 +869,7 @@ Resources:
       Parameters:
         BootstrapAutoScaleGroup: !Ref BootstrapAutoScaleGroup
         FrontendAutoScaleGroup: !Ref FrontendAutoScaleGroup
-        ElasticsearchDomain: !GetAtt ElasticsearchStack.Outputs.ElasticsearchDomain
+        ElasticsearchDomain: !GetAtt ElasticsearchStack02.Outputs.ElasticsearchDomain
         DBPostgres: !GetAtt PostgreSQLStack.Outputs.DBPostgres
         TargetGroupFullName: !GetAtt ChefTargetGroup.TargetGroupFullName
         LoadBalancerFullName: !GetAtt ChefALB.LoadBalancerFullName
